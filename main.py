@@ -112,15 +112,35 @@ async def handle_war(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # حفظ الرسالة الأصلية فوراً
     original_msg_store[mid] = msg
 
-    # تحديد رتبة المستخدم
+    # تحديد رتبة المستخدم (موسى والمالك كلاهما حكم بكامل الصلاحيات)
     try:
         chat_member = await context.bot.get_chat_member(cid, user.id)
-        is_owner = (chat_member.status == 'creator')
-        # المالك أو موسى هم "حكام رسميين"
-        is_referee = (user.username == "mwsa_20") or is_owner
+        is_owner = (chat_member.status in ['creator', 'administrator']) # تعديل بسيط ليشمل الأدمن المالك
+        is_referee = (user.username == "mwsa_20") or (chat_member.status == 'creator')
     except:
         is_owner = False
         is_referee = (user.username == "mwsa_20")
+
+    # --- ميزة إلغاء الإنذار (لموسى والحكم فقط) ---
+    if "الغاء انذار" in msg_cleaned and is_referee:
+        target_t = None
+        # إذا كان رداً على رسالة
+        if update.message.reply_to_message:
+            t_user = update.message.reply_to_message.from_user
+            target_t = f"@{t_user.username}" if t_user.username else f"ID:{t_user.id}"
+        # إذا كان منشناً بالاسم
+        else:
+            mentions = re.findall(r'@\w+', msg)
+            if mentions:
+                target_t = mentions[0]
+        
+        if target_t:
+            if cid in user_warnings and target_t in user_warnings[cid]:
+                user_warnings[cid][target_t] = 0
+            if cid in admin_warnings and target_t in admin_warnings[cid]:
+                admin_warnings[cid][target_t] = 0
+            await update.message.reply_text(f"✅ تم صفر (إلغاء) كافة إنذارات {target_t} بواسطة الإدارة.")
+            return
 
     # --- نظام الطرد الآلي (للكفر والسب) ---
     for word in BAN_WORDS:
@@ -141,23 +161,23 @@ async def handle_war(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text(f"🎲 **قرعة الروليت:**\n\n🏆 الفائز هو: {winner}")
             return
 
-    # --- نظام الإنذارات (م) وللاعبين ---
+    # --- نظام الإنذارات (م) وللاعبين (صلاحية موسى والمالك) ---
     if update.message.reply_to_message:
         target_user = update.message.reply_to_message.from_user
         t_tag = f"@{target_user.username}" if target_user.username else f"ID:{target_user.id}"
         
-        # إنذار مسؤول (م)
-        if msg.strip() == "انذار م" and is_owner:
+        # إنذار مسؤول (م) - متاح لموسى والمالك
+        if msg.strip() == "انذار م" and is_referee:
             if cid not in admin_warnings: admin_warnings[cid] = {}
             count = admin_warnings[cid].get(t_tag, 0) + 1
             admin_warnings[cid][t_tag] = count
             await update.message.reply_text(f"⚠️ **إنذار مسؤول (م)**\n👤 المسؤول: {t_tag}\n🔢 العدد: ({count}/3)")
             if count >= 3:
-                await update.message.reply_text(f"🚫 تم سحب صلاحيات المسؤول {t_tag}.")
+                await update.message.reply_text(f"🚫 تم سحب صلاحيات المسؤول {t_tag} بواسطة الإدارة.")
             return
 
-        # إنذار لاعب عادي
-        if msg.strip() == "انذار" and is_owner:
+        # إنذار لاعب عادي - متاح لموسى والمالك
+        if msg.strip() == "انذار" and is_referee:
             if cid not in user_warnings: user_warnings[cid] = {}
             count = user_warnings[cid].get(t_tag, 0) + 1
             user_warnings[cid][t_tag] = count
@@ -220,19 +240,19 @@ async def handle_war(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     w["mid"] = sent.message_id
             return
 
-        # --- تحديد المساعد (للقائد فقط) ---
+        # --- تحديد المساعد (للقائد وموسى والمالك) ---
         asst_match = re.search(r'مساعدي\s+(@\w+)\s+كلان\s+(\w+)', msg)
         if asst_match:
             target_asst = asst_match.group(1)
             clan_name = asst_match.group(2).upper()
             target_key = "c1" if w["c1"]["n"].upper() == clan_name else ("c2" if w["c2"]["n"].upper() == clan_name else None)
             
-            if target_key and w[target_key]["leader"] == u_tag:
+            if target_key and (w[target_key]["leader"] == u_tag or is_referee):
                 if cid not in clans_mgmt: clans_mgmt[cid] = {}
                 clans_mgmt[cid][clan_name] = {"asst": target_asst}
-                await update.message.reply_text(f"✅ القائد {u_tag} عين المساعد {target_asst} لكلان {clan_name}.")
+                await update.message.reply_text(f"✅ تم تعيين المساعد {target_asst} لكلان {clan_name}.")
             elif target_key:
-                await update.message.reply_text("❌ فقط قائد الكلان هو من يحدد مساعده.")
+                await update.message.reply_text("❌ فقط قائد الكلان أو الحكم يمكنه تحديد المساعد.")
             return
 
         # --- نظام إضافة النقاط (تسجيل عادي وفري) ---
@@ -269,7 +289,7 @@ async def handle_war(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 
                 await update.message.reply_text(f"✅ تم تسجيل نقطة مباراة لـ {w[win_k]['n']}.")
 
-            # 2. حالة النقطة الفري (قرار إداري)
+            # 2. حالة النقطة الفري (قرار إداري - لموسى والمالك فقط)
             else:
                 if not is_referee:
                     await update.message.reply_text("❌ النقطة الفري (+1 اسم الكلان) هي صلاحية حصرية لموسى أو مالك الجروب فقط.")
@@ -277,7 +297,7 @@ async def handle_war(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 
                 w[win_k]["s"] += 1
                 w[win_k]["stats"].append({"name": "Free Point", "goals": 0, "rec": 0, "is_free": True})
-                await update.message.reply_text(f"⚖️ قرار إداري: إضافة نقطة فري لكلان {w[win_k]['n']}.")
+                await update.message.reply_text(f"⚖️ قرار إداري: إضافة نقطة فري لكلان {w[win_k]['n']} بواسطة {u_tag}.")
 
             # تحديث عنوان الجروب والرسالة المثبتة
             try: await context.bot.set_chat_title(cid, f"⚔️ {w['c1']['n']} {w['c1']['s']} - {w['c2']['s']} {w['c2']['n']} ⚔️")
