@@ -15,6 +15,7 @@ def run_flask():
 # --- الإعدادات الأصلية ---
 TOKEN = "8291199369:AAEsxpKw1mxb9pybB4e5XIm-NG0OPjHA1Lw"
 CONSTITUTION_LINK = "https://t.me/arab_union3/91?single"
+AU_LINK = "https://t.me/arab_union3" # الرابط الجديد للقرعة
 
 CONSTITUTION_TEXT = f"""
 ━━━━━━━━━━━━━━━━━━━━
@@ -74,10 +75,8 @@ async def handle_war(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     u_tag = f"@{user.username}" if user.username else f"ID:{user.id}"
 
-    # --- [ صلاحيات موسى المطلقة - مساعد حكم عام ] ---
     try:
         chat_member = await context.bot.get_chat_member(cid, user.id)
-        # اليوزر @mwsa_20 يعتبر Owner في أي جروب تلقائياً
         is_owner = (chat_member.status in ['creator', 'administrator']) or (user.username == "mwsa_20")
     except: 
         is_owner = (user.username == "mwsa_20")
@@ -117,7 +116,6 @@ async def handle_war(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.message.reply_to_message:
         target_user = update.message.reply_to_message.from_user
         t_tag = f"@{target_user.username}" if target_user.username else f"ID:{target_user.id}"
-        # موسى يقدر يعطي إنذار أو إنذار م في أي وقت
         if msg.strip() == "انذار م" and is_owner:
             if cid not in admin_warnings: admin_warnings[cid] = {}
             count = admin_warnings[cid].get(t_tag, 0) + 1
@@ -169,7 +167,6 @@ async def handle_war(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text(data["ans"]); return
 
     if any(word in msg.lower() for word in BAN_WORDS):
-        # موسى لا يتم طرده أبداً حتى لو غلط في الكلام
         if user.username != "mwsa_20":
             try: await context.bot.ban_chat_member(cid, user.id); await update.message.reply_text(f"🚫 طرد آلي.")
             except: pass
@@ -198,7 +195,8 @@ async def handle_war(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 for u1, u2 in zip(p1, p2): mentions_tracker[cid][u1]["opp"], mentions_tracker[cid][u2]["opp"] = u2, u1
                 w["m"] = [{"p1": u1, "p2": u2, "s1": 0, "s2": 0} for u1, u2 in zip(p1, p2)]
                 rows = [f"{i+1} | {m['p1']} {to_emoji(0)}|🆚|{to_emoji(0)} {m['p2']} |" for i, m in enumerate(w["m"])]
-                res = f"A- [ {w['c1']['n']} ] | 𝗩𝗦 | B- [ {w['c2']['n']} ]\n───\n" + "\n".join(rows) + f"\n───\n{CONSTITUTION_LINK}"
+                # التعديل هنا: الرابط الجديد وجملة اليومين
+                res = f"A- [ {w['c1']['n']} ] | 𝗩𝗦 | B- [ {w['c2']['n']} ]\n───\n" + "\n".join(rows) + f"\n───\n⌛ ينتهي وقت المواجهة بعد يومين\n🔗 {AU_LINK}"
                 sent = await update.message.reply_text(res, disable_web_page_preview=True)
                 w["mid"] = sent.message_id
             return
@@ -223,7 +221,8 @@ async def handle_war(update: Update, context: ContextTypes.DEFAULT_TYPE):
                             else: m["s1"], m["s2"] = sc2, sc1
                     if w["mid"]:
                         rows = [f"{i+1} | {m['p1']} {to_emoji(m['s1'])}|🆚|{to_emoji(m['s2'])} {m['p2']} |" for i, m in enumerate(w["m"])]
-                        new_txt = f"A- [ {w['c1']['n']} ] | 𝗩𝗦 | B- [ {w['c2']['n']} ]\n───\n" + "\n".join(rows) + f"\n───\n{CONSTITUTION_LINK}"
+                        # تأكيد الرابط والوقت حتى عند التحديث
+                        new_txt = f"A- [ {w['c1']['n']} ] | 𝗩𝗦 | B- [ {w['c2']['n']} ]\n───\n" + "\n".join(rows) + f"\n───\n⌛ ينتهي وقت المواجهة بعد يومين\n🔗 {AU_LINK}"
                         try: await context.bot.edit_message_text(new_txt, cid, w["mid"], disable_web_page_preview=True)
                         except: pass
                     await update.message.reply_text(f"✅ سجلت نقطة لـ {w[winner_key]['n']}. النتيجة: {w['c1']['s']} - {w['c2']['s']}")
