@@ -13,7 +13,7 @@ def run_flask():
     web_app.run(host='0.0.0.0', port=7860)
 
 # --- الإعدادات الأصلية ---
-TOKEN = "8291199369:AAEsxpKw1mxb9pybB4e5XIm-NG0OPjHA1Lw"
+TOKEN = "8348914280:AAFK8xGfs9PK81nhkn5g64XleRLLVyNJbec"
 CONSTITUTION_LINK = "https://t.me/arab_union3/91?single"
 AU_LINK = "https://t.me/arab_union3" # الرابط الجديد للقرعة
 
