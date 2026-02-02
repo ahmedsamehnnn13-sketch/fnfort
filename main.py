@@ -112,6 +112,11 @@ async def handle_war(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # حفظ الرسالة الأصلية فوراً
     original_msg_store[mid] = msg
 
+    # --- [هنا التعديل: الرد على القوانين] ---
+    for obj_key, obj_val in OBJECTION_RESPONSES.items():
+        if obj_key in msg_cleaned:
+            await update.message.reply_text(obj_val)
+
     # تحديد رتبة المستخدم (موسى والمالك كلاهما حكم بكامل الصلاحيات)
     try:
         chat_member = await context.bot.get_chat_member(cid, user.id)
