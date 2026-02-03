@@ -313,18 +313,35 @@ async def handle_war(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 updated_table = f"A- [ {w['c1']['n']} ] | 𝗩𝗦 | B- [ {w['c2']['n']} ]\n───\n" + "\n".join(rows) + f"\n───\n⌛ يومين وينتهي الوقت\n🔗 {AU_LINK}"
                 try: await context.bot.edit_message_text(updated_table, cid, w["mid"], disable_web_page_preview=True)
                 except: pass
-
             # فحص نهاية الحرب (4 نقاط)
             if w[win_k]["s"] >= 4:
                 w["active"] = False
-                history = w[win_k]["stats"]
-                # اختيار الحاسم: آخر لاعب حقيقي سجل نقطة (تجاهل الفري)
-                real_players = [h for h in history if not h["is_free"]]
-                hasm = real_players[-1]["name"] if real_players else "فوز إداري"
-                # النجم: أقل واحد استقبل أهداف في مبارياته
-                star = min(real_players, key=lambda x: x["rec"])["name"] if real_players else "غير محدد"
+                history = w[win_k]["stats"] # سجل نقاط الكلان الفائز فقط
                 
-                await update.message.reply_text(f"🎊 انتهت الحرب بفوز كلان: {w[win_k]['n']} 🎊\n\n🎯 الحاسم: {hasm}\n⭐ النجم: {star}")
+                # تصفية اللاعبين الحقيقيين (تجاهل النقاط الفري)
+                real_players = [h for h in history if not h["is_free"]]
+                
+                if real_players:
+                    # 1. الحاسم: هو آخر لاعب سجل نقطة فعلية للكلان الفائز
+                    hasm = real_players[-1]["name"]
+                    
+                    # 2. النجم: هو اللاعب صاحب أقل عدد أهداف مستقبلة (rec) من بين لاعبي الكلان الفائز
+                    # تم استخدام min مع key لضمان اختيار صاحب الرقم الأقل في الاستقبال
+                    star_player_data = min(real_players, key=lambda x: x["rec"])
+                    star = star_player_data["name"]
+                    star_rec = star_player_data["rec"]
+                    
+                    result_msg = (
+                        f"🎊 انتهت الحرب بفوز كلان: {w[win_k]['n']} 🎊\n\n"
+                        f"🎯 الحاسم: {hasm} (آخر من سجل)\n"
+                        f"⭐ النجم: {star} (استقبل {star_rec} أهداف فقط)"
+                    )
+                else:
+                    # في حال كان الفوز كله "فري" بدون مباريات حقيقية
+                    result_msg = f"🎊 انتهت الحرب بفوز إداري لكلان: {w[win_k]['n']} 🎊"
+                
+                await update.message.reply_text(result_msg)
+
 
 # --- تشغيل البوت ---
 if __name__ == "__main__":
