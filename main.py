@@ -450,13 +450,16 @@ async def handle_war(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 
                 if real_players:
                     hasm = real_players[-1]["name"]
-                    star_player_data = min(real_players, key=lambda x: x["rec"])
+                    # --- [تعديل] اختيار النجم: أكثر لاعب سجل وما استقبل (أعلى فارق أهداف) ---
+                    star_player_data = max(real_players, key=lambda x: (x["goals"] - x["rec"]))
                     star = star_player_data["name"]
+                    star_goals = star_player_data["goals"]
                     star_rec = star_player_data["rec"]
+                    
                     result_msg = (
                         f"🎊 انتهت الحرب بفوز كلان: {w[win_k]['n']} 🎊\n\n"
                         f"🎯 الحاسم: {hasm} (آخر من سجل)\n"
-                        f"⭐ النجم: {star} (استقبل {star_rec} أهداف فقط)"
+                        f"⭐ النجم: {star} (سجل {star_goals} واستقبل {star_rec})"
                     )
                 else:
                     result_msg = f"🎊 انتهت الحرب بفوز إداري لكلان: {w[win_k]['n']} 🎊"
@@ -464,10 +467,9 @@ async def handle_war(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 # إرسال رسالة النتيجة أولاً
                 await update.message.reply_text(result_msg)
 
-                # --- [تم التعديل] إرسال تفاصيل النتائج الواقعية (ليست 0/0) ---
+                # --- إرسال تفاصيل النتائج الواقعية (ليست 0/0) ---
                 match_results_str = ""
                 for i, m in enumerate(w["matches"]):
-                    # الآن سيتم سحب النتائج المسجلة s1 و s2 بدلاً من الأصفار
                     line = f"{i+1} | {m['p1']} {to_emoji(m['s1'])}|🆚|{to_emoji(m['s2'])} {m['p2']} |"
                     match_results_str += line + "\n"
                     match_results_str += "─── ─── ─── ─── ───\n"
