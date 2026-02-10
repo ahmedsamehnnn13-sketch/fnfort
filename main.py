@@ -385,7 +385,7 @@ async def handle_war(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await update.message.reply_text("❌ فقط قائد الكلان أو الحكم يمكنه تحديد المساعد.")
             return
 
-        # --- نظام إضافة النقاط ---
+        # --- نظام إضافة النقاط وتحديث المباريات ---
         if "+ 1" in msg_up or "+1" in msg_up:
             players = re.findall(r'@\w+', msg_up)
             scores = re.findall(r'(\d+)', msg_up)
@@ -398,19 +398,27 @@ async def handle_war(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     await update.message.reply_text("❌ عذراً، التسجيل مسموح للحكام أو القادة/المساعدين فقط.")
                     return
 
-                u1, u2 = players[0], players[1]
+                u1, u2 = players[0], players[1] # أسماء اللاعبين (UPPERCASE بسبب regex)
                 sc1, sc2 = int(scores[0]), int(scores[1])
                 p_win = u1 if sc1 > sc2 else u2
                 
                 w[win_k]["s"] += 1
                 w[win_k]["stats"].append({"name": p_win, "goals": max(sc1, sc2), "rec": min(sc1, sc2), "is_free": False})
                 
+                # --- تحديث نتيجة المباراة في الجدول (إصلاح عدم التحديث) ---
                 for m in w["matches"]:
-                    if (u1 in [m["p1"], m["p2"]]) and (u2 in [m["p1"], m["p2"]]):
-                        if u1 == m["p1"]: m["s1"], m["s2"] = sc1, sc2
-                        else: m["s1"], m["s2"] = sc2, sc1
+                    # نحول أسماء اللاعبين في الجدول لحروف كبيرة للمقارنة فقط
+                    mp1_u = m["p1"].upper()
+                    mp2_u = m["p2"].upper()
+                    
+                    if (u1 == mp1_u or u1 == mp2_u) and (u2 == mp1_u or u2 == mp2_u):
+                        # تحديث النتائج بناءً على مكان اللاعب في الجدول
+                        if u1 == mp1_u:
+                            m["s1"], m["s2"] = sc1, sc2
+                        else:
+                            m["s1"], m["s2"] = sc2, sc1
                 
-                save_data() # حفظ النتيجة
+                save_data() # حفظ النتيجة وتحديث المباريات
                 await update.message.reply_text(f"✅ تم تسجيل نقطة مباراة لـ {w[win_k]['n']}.")
 
             else:
@@ -426,12 +434,14 @@ async def handle_war(update: Update, context: ContextTypes.DEFAULT_TYPE):
             try: await context.bot.set_chat_title(cid, f"⚔️ {w['c1']['n']} {w['c1']['s']} - {w['c2']['s']} {w['c2']['n']} ⚔️")
             except: pass
 
+            # تحديث الجدول المعروض في التليجرام
             if w["mid"]:
                 rows = [f"{i+1} | {m['p1']} {to_emoji(m['s1'])}|🆚|{to_emoji(m['s2'])} {m['p2']} |" for i, m in enumerate(w["matches"])]
                 updated_table = f"A- [ {w['c1']['n']} ] | 𝗩𝗦 | B- [ {w['c2']['n']} ]\n───\n" + "\n".join(rows) + f"\n───\n⌛ يومين وينتهي الوقت\n🔗 {AU_LINK}"
                 try: await context.bot.edit_message_text(updated_table, cid, w["mid"], disable_web_page_preview=True)
                 except: pass
             
+            # --- إنهاء الحرب وإرسال النتائج النهائية ---
             if w[win_k]["s"] >= 4:
                 w["active"] = False
                 save_data() # حفظ نهاية الحرب
@@ -454,16 +464,16 @@ async def handle_war(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 # إرسال رسالة النتيجة أولاً
                 await update.message.reply_text(result_msg)
 
-                # --- [تم التعديل] إرسال جدول النتائج بالتنسيق المطلوب حصراً ---
+                # --- [تم التعديل] إرسال تفاصيل النتائج الواقعية (ليست 0/0) ---
                 match_results_str = ""
                 for i, m in enumerate(w["matches"]):
-                    # الكليشة المطلوبة بالضبط
+                    # الآن سيتم سحب النتائج المسجلة s1 و s2 بدلاً من الأصفار
                     line = f"{i+1} | {m['p1']} {to_emoji(m['s1'])}|🆚|{to_emoji(m['s2'])} {m['p2']} |"
                     match_results_str += line + "\n"
                     match_results_str += "─── ─── ─── ─── ───\n"
                 
                 # إرسال الرسالة النهائية
-                await update.message.reply_text(match_results_str)
+                await update.message.reply_text(f"📊 **تفاصيل النتائج:**\n\n{match_results_str}")
 
 # --- تشغيل البوت ---
 if __name__ == "__main__":
@@ -476,5 +486,5 @@ if __name__ == "__main__":
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_war))
     app.add_handler(MessageHandler(filters.UpdateType.EDITED_MESSAGE, handle_edited_msg))
     
-    print("✅ البوت يعمل الآن (مع خاصية حفظ البيانات وتغيير القائد)...")
+    print("✅ البوت يعمل الآن (مع خاصية حفظ البيانات وتحديث النتائج واقعياً)...")
     app.run_polling()
