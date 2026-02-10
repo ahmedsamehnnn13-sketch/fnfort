@@ -454,15 +454,16 @@ async def handle_war(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 # إرسال رسالة النتيجة أولاً
                 await update.message.reply_text(result_msg)
 
-                # --- [إضافة] إرسال جدول النتائج بالتنسيق المطلوب ---
-                final_rows = []
+                # --- [تم التعديل] إرسال جدول النتائج بالتنسيق المطلوب حصراً ---
+                match_results_str = ""
                 for i, m in enumerate(w["matches"]):
+                    # الكليشة المطلوبة بالضبط
                     line = f"{i+1} | {m['p1']} {to_emoji(m['s1'])}|🆚|{to_emoji(m['s2'])} {m['p2']} |"
-                    final_rows.append(line)
-                    final_rows.append("─── ─── ─── ─── ───")
+                    match_results_str += line + "\n"
+                    match_results_str += "─── ─── ─── ─── ───\n"
                 
-                final_table_msg = "\n".join(final_rows)
-                await update.message.reply_text(f"📊 **تفاصيل النتائج:**\n\n{final_table_msg}")
+                # إرسال الرسالة النهائية
+                await update.message.reply_text(match_results_str)
 
 # --- تشغيل البوت ---
 if __name__ == "__main__":
