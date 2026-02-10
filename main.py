@@ -361,6 +361,12 @@ async def handle_war(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     sent = await update.message.reply_text(table, disable_web_page_preview=True)
                     w["mid"] = sent.message_id
                     save_data() # حفظ آيدي رسالة الجدول
+                    
+                    # --- [إضافة] تثبيت الرسالة تلقائياً ---
+                    try:
+                        await context.bot.pin_chat_message(chat_id=cid, message_id=sent.message_id)
+                    except Exception as e:
+                        print(f"Error pinning message: {e}")
             return
 
         # --- تحديد المساعد ---
@@ -445,7 +451,18 @@ async def handle_war(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 else:
                     result_msg = f"🎊 انتهت الحرب بفوز إداري لكلان: {w[win_k]['n']} 🎊"
                 
+                # إرسال رسالة النتيجة أولاً
                 await update.message.reply_text(result_msg)
+
+                # --- [إضافة] إرسال جدول النتائج بالتنسيق المطلوب ---
+                final_rows = []
+                for i, m in enumerate(w["matches"]):
+                    line = f"{i+1} | {m['p1']} {to_emoji(m['s1'])}|🆚|{to_emoji(m['s2'])} {m['p2']} |"
+                    final_rows.append(line)
+                    final_rows.append("─── ─── ─── ─── ───")
+                
+                final_table_msg = "\n".join(final_rows)
+                await update.message.reply_text(f"📊 **تفاصيل النتائج:**\n\n{final_table_msg}")
 
 # --- تشغيل البوت ---
 if __name__ == "__main__":
