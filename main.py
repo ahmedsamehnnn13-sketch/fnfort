@@ -21,7 +21,7 @@ def run_flask():
     web_app.run(host='0.0.0.0', port=7860)
 
 # --- الإعدادات الثابتة وروابط الاتحاد ---
-TOKEN = "8546666050:AAFt7buGH1xrVTTWa-lrIhOdesG_sk2n_bM"
+TOKEN = "8113358654:AAF6crTuiDikhfQz56twot-1vGs7exwdaTQ"
 CONSTITUTION_LINK = "https://t.me/arab_union3"
 AU_LINK = "https://t.me/arab_union3"
 DATA_FILE = "bot_data.json"  # اسم ملف حفظ البيانات
