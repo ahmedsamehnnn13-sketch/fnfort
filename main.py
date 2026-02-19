@@ -244,7 +244,7 @@ async def handle_war(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     cid = update.effective_chat.id
     msg = update.message.text
-    mid = update.message.message_id
+    mid = update.message.id
     msg_up = msg.upper().strip()
     msg_cleaned = clean_text(msg)
     user = update.effective_user
@@ -276,6 +276,7 @@ async def handle_war(update: Update, context: ContextTypes.DEFAULT_TYPE):
         c1_name = parts[0].replace("CLAN ", "").strip()
         c2_name = parts[1].replace("CLAN ", "").strip()
 
+        # التحقق من وجود المنشور مسبقاً
         if post_link in post_to_group:
             target_cid = post_to_group[post_link]
             try:
@@ -286,26 +287,28 @@ async def handle_war(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         target_cid = None
         for g_id in AVAILABLE_GROUPS:
+            # الجروب يعتبر متاحاً فقط إذا لم يكن مسجلاً في wars أو حالته active هي False
             if g_id not in wars or wars[g_id].get("active") == False:
                 target_cid = g_id
                 break
         
         if target_cid:
-            post_to_group[post_link] = target_cid
+            # حجز الجروب فوراً لمنع التداخل
             wars[target_cid] = {
                 "c1": {"n": c1_name, "s": 0, "p": [], "stats": [], "leader": None},
                 "c2": {"n": c2_name, "s": 0, "p": [], "stats": [], "leader": None},
                 "active": True, "mid": None, "matches": [], "post_link": post_link, "end_time": None
             }
+            post_to_group[post_link] = target_cid
             save_data()
             
             try:
-                # 1. تغيير الاسم أولاً (إضافة try لتفادي أخطاء الصلاحيات)
+                # 1. تغيير اسم المجموعة أولاً
                 try:
                     await context.bot.set_chat_title(target_cid, f"⚔️ {c1_name} 0 - 0 {c2_name} ⚔️")
                 except: pass
                 
-                # 2. إرسال الرسالة بعد تغيير الاسم
+                # 2. إرسال رسالة البدء وتثبيتها
                 start_msg = await context.bot.send_message(target_cid, f"⚔️ بدأت الحرب الرسمية بين:\n🔥 {c1_name} ضد {c2_name} 🔥\n🔗 رابط المنشور: {post_link}")
                 await context.bot.pin_chat_message(target_cid, start_msg.message_id)
                 
@@ -314,7 +317,7 @@ async def handle_war(update: Update, context: ContextTypes.DEFAULT_TYPE):
             except Exception as e:
                 await update.message.reply_text(f"❌ حدث خطأ أثناء تجهيز الجروب: {str(e)}")
         else:
-            await update.message.reply_text("❌ نعتذر، جميع الجروبات مشغولة حالياً.")
+            await update.message.reply_text("❌ نعتذر، جميع الجروبات مشغولة حالياً بمواجهات قائمة.")
         return
 
     # --- الرد على الاعتراضات والقوانين ---
