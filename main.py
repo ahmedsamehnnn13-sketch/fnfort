@@ -1,108 +1,121 @@
 import random
 import re
-import json
+import logging
 import os
+import asyncio
+import json
 import threading
-from datetime import datetime, timedelta
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import Application, MessageHandler, filters, ContextTypes, CallbackQueryHandler
-from flask import Flask
+from datetime import datetime, time
+from telegram import Update
+from telegram.ext import Application, MessageHandler, filters, ContextTypes
+from flask import Flask 
 
-# -------------------- إعدادات Flask --------------------
+
+# --- إعدادات Flask لضمان استمرارية البوت ---
 web_app = Flask(__name__)
 
 @web_app.route('/')
 def home():
-    return "Referee Bot is Running!"
+    return "Bot is Running Live!"
 
 def run_flask():
     web_app.run(host='0.0.0.0', port=7860)
 
-# -------------------- الثوابت --------------------
-TOKEN = "8546666050:AAFt7buGH1xrVTTWa-lrIhOdesG_sk2n_bM"  # توكن بوت الحكم
-PUBLISHER_BOT_ID = 8251539959  # معرف بوت النشر الرقمي (بدون @)
-ORGANIZER_CHAT_ID = -1002029492622  # معرف مجموعة المنظمين
+# --- الإعدادات الثابتة وروابط الاتحاد ---
+TOKEN = "8546666050:AAFt7buGH1xrVTTWa-lrIhOdesG_sk2n_bM"
+CONSTITUTION_LINK = "https://t.me/arab_union3"
 AU_LINK = "https://t.me/arab_union3"
-DATA_FILE = "referee_data.json"
-SUPER_ADMINS = ["mwsa_20", "levil_8"]  # السوبر أدمن
+DATA_FILE = "bot_data.json"  # اسم ملف حفظ البيانات
 
-# -------------------- قاموس القوانين (موسع) --------------------
+# --- قاموس القوانين التفصيلية ---
 DETAILED_LAWS = {
-    "قوائم": """⚖️ قوانين القوائم والنجم والحاسم:
-1️⃣ أي فوز قوائم يمنع كتابة النجم والحاسم.
-2️⃣ إذا كان الحاسم For Free لا يحتسب، ويعتبر الشخص قبله هو الحاسم.
-3️⃣ الشخص الفائز بالمباراة وهو غير حاسم: الكلان يُحظر من النشر أسبوع.
-4️⃣ المنشن للحكم إلزامي عند إرسال القائمة (مدة الاعتراض 10 ساعات).""",
-    "سكربت": """⚖️ قوانين السكربت:
+    "قوائم": """⚖️ **قوانين القوائم والنجم والحاسم:**
+1️⃣ **القواعد الأساسية:**
+- أي فوز قوائم يمنع كتابة النجم والحاسم.
+- النجم والحاسم يحددان من الحكم (الأهداف، التأثير، السلوك).
+- يمنع جدولة القوائم (إرسالها والقائد غير متصل أو آخر دقيقة بدون قراءة).
+- المنشن للحكم إلزامي عند إرسال القائمة، بدونه تعتبر لاغية (مدة الاعتراض 10 ساعات).
+
+2️⃣ **التوقيت:**
+- نصف النهائي/النهائي: 18 ساعة (+15د سماح).
+- باقي الأدوار: 14 ساعة (+15د سماح).
+🔗 للمزيد: https://t.me/arab_union3""",
+
+    "سكربت": """⚖️ **قوانين السكربت:**
 ⬆️ طاقات 92 أو أقل = سكربت (حتى لو ميسي).
 ⬆️ طاقات أعلى من 92 = ليس سكربت (باستثناء بدون وجه).
-⬆️ الاعتراض في بداية المباراة فقط.""",
-    "وقت": """⚖️ توقيت المواجهات:
-⏰ الوقت الرسمي: 9 صباحاً – 1 صباحاً.
-🔥 التمديد: يوم للأدوار العادية، يومين لنصف/نهائي.
-🔹 شروط التمديد: حاسمة، اتفاق الطرفين، تواجد...""",
-    "تواجد": """⚖️ التواجد والغياب:
-🤔 غياب 20 ساعة بدون اتفاق = تبديل.
-🤔 الرد خلال 10 دقائق بدون موعد = تهرب (تبديل).
-🤔 التاك يحسب إذا لم يرد الخصم خلال 10 دقائق.""",
-    "تصوير": """⚖️ التصوير:
+⬆️ الاعتراض في بداية المباراة فقط (الخروج فوراً مع دليل).
+⬆️ في المنتصف: تغيير التشكيلة أو المدرب لا يعتبر سكربت.
+🔗 للمزيد: https://t.me/arab_union3""",
+
+    "وقت": """⚖️ **توقيت المواجهات والتمديد:**
+⏰ **الوقت الرسمي:** من 9 صباحاً حتى 1 صباحاً.
+🚫 لا يجبر الخصم على اللعب في وقت غير رسمي (2-8 صباحاً).
+
+🔥 **التمديد:**
+- يوم واحد (للأدوار العادية)، يومين (نصف/نهائي).
+- يمدد تلقائياً إذا: (حاسمة، اتفاق طرفين، شروط التمديد المنطبقة).
+🔗 للمزيد: https://t.me/arab_union3""",
+
+    "تواجد": """⚖️ **قوانين التواجد والغياب:**
+🤔 غياب 20 ساعة بدون اتفاق = تبديل مباشر.
+🤔 غياب الطرفين = يتم تبديل الطرف الأقل محاولة للاتفاق.
+🤔 وضع تفاعل (Reaction) على الموعد يعتبر اتفاقاً.
+🤔 الرد خلال 10 دقائق بدون تحديد موعد يعتبر تهرباً (يستوجب التبديل).
+🔗 للمزيد: https://t.me/arab_union3""",
+
+    "تصوير": """⚖️ **قوانين التصوير (محدث):**
 1- وقت التصوير في البداية فقط.
-2- الآيفون: فيديو (روم المحادثة + الرقم التسلسلي من "حول").
-3- يمنع التصوير في النهاية لتجنب الغش.""",
-    "انسحاب": """⚖️ الانسحاب:
+2- **الآيفون:** فيديو (روم المحادثة + الرقم التسلسلي من "حول الهاتف").
+3- يمنع التصوير نهاية المباراة لتجنب الغش.
+4- إرسال التصوير متاح في أي وقت (بداية أو نهاية).
+🔗 للمزيد: https://t.me/arab_union3""",
+
+    "انسحاب": """⚖️ **قوانين الانسحاب والخروج:**
 🤔 خروج الخاسر بدون دليل + اختفاء ساعتين = هدف مباشر.
-🤔 خروج متعمد = هدف مباشر.
-🤔 الخروج بدون فسخ عقد = حظر بالمدة المتبقية (أقصى أسبوعين).""",
-    "سب": """⚖️ السب والإساءة:
-🚫 سب الأهل/الكفر = طرد + حظر (يمكن تقليله بالتنازل).
-🚫 السب في الخاص أثناء المواجهة = تبديل + حظر.
-🚫 استفزاز الخصم = عقوبة تقديرية.""",
-    "فار": """⚖️ الـ VAR:
-✅ مرة واحدة لكل مواجهة (نصف نهائي، ربع نهائي، دور 16).
-✅ الاعتماد الأساسي على الحكم.""",
-    "انتقالات": """⚖️ الانتقالات:
-📺 مسموحة فقط الخميس والجمعة.
-🤔 أي انتقال في يوم آخر = غير رسمي ويتم تبديل اللاعب.
-🤔 اللاعب الحر يمكنه الانتقال أي وقت.""",
-    "عقود": """⚖️ العقود:
-🤔 أقصى حد 8 قادة (القائد التاسع وهمي ويطرد).
+🤔 خروج متعمد (اعتراف) = هدف مباشر.
+🤔 سوء نت: فيديو 30 ثانية يوضح اللاق والإشعارات.
+🤔 الخروج بدون فسخ عقد = حظر بمدة العقد المتبقية.
+🔗 للمزيد: https://t.me/arab_union3""",
+
+    "سب": """⚖️ **قوانين السب والإساءة:**
+🚫 سب الأهل/الكفر = طرد وحظر (يمكن تقليله بالتنازل).
+🚫 السب في الخاص (أثناء المواجهة) = تبديل + حظر (يتطلب دليل فيديو لليوزر).
+🚫 استفزاز الخصم أو الحكم = عقوبة تقديرية (تبديل/حظر).
+🔗 للمزيد: https://t.me/arab_union3""",
+
+    "فار": """⚖️ **قوانين الـ VAR:**
+✅ يحق طلب الـ VAR مرة واحدة فقط في (نصف النهائي، ربع النهائي، دور 16).
+✅ الاعتماد الأساسي على حكم المباراة.
+🔗 للمزيد: https://t.me/arab_union3""",
+
+    "انتقالات": """⚖️ **قوانين الانتقالات:**
+📺 مسموحة فقط يومي (الخميس والجمعة).
+🤔 أي انتقال في يوم آخر يعتبر غير رسمي ويتم تبديل اللاعب.
+🤔 اللاعب الحر (بدون عقد) يمكنه الانتقال في أي وقت.
+🔗 للمزيد: https://t.me/arab_union3""",
+    
+    "عقود": """⚖️ **قوانين العقود:**
+🤔 أقصى حد للمسؤولين في العقود: 8 قادة.
+🤔 القائد الـ 9 يعتبر وهمي ويطرد.
 🤔 فسخ العقد حصراً من القادة المسجلين.
-🤔 الاعتراض على العقد بعد المباراة: الخيار للخصم (سحب نقطة أو استكمال).""",
-    "نشر": """⚖️ النشر:
-📢 أي فوز قوائم يمنع نشر النجم والحاسم.
-📢 النشر الوهمي = حظر الكلان من قنوات النشر أسبوع.""",
-    "حظر": """⚖️ الحظر والتنازل:
-⛔️ المدة الأساسية أسبوعين.
-🤝 التنازل يخفض المدة للنصف.
-🚫 لا يشمل التنازل: الكفر، الوهمي، سب اللجنة، VPN، إضافة لاعب محظور.""",
-    "اتفاق": """⚖️ الاتفاق والاعتراض:
-✅ الاتفاق يسقط أغلب القوانين باستثناء: الحظر، دليل الخروج، آخر ساعتين، العقود...
-⚠️ الاعتراض على قرار الحكم يسقط بعد 12 ساعة من انتهاء المواجهة.""",
-    "تاكات": """⚖️ نظام التاكات:
-🕐 التاك يحسب بعد 10 دقائق من عدم الرد.
-🔄 تاك واحد لكل لاعب في نصف ساعة.
-📊 بعد 3 أيام، يرسل البوت تقرير التاكات وأزرار للفائز (نقطة فري).""",
-    "تبديلات": """⚖️ التبديلات:
-🔄 كل كلان 3 تبديلات فقط.
-📝 الأمر: "تبديل CLAN @old @new"
-⚠️ التبديل الرابع لا يحتسب.""",
-    "حاسم": """⚖️ الحاسم:
-🔥 عند التعادل 3-3، يرسل القائد: "حاسم CLAN @player".
-⚔️ يتم إيقاف التاكات وتحديد مباراة حاسمة."""
+🤔 الاعتراض على العقد بعد المباراة: الخيار للخصم (سحب نقطة أو استكمال).
+🔗 للمزيد: https://t.me/arab_union3"""
 }
 
-# كلمات الطرد
-BAN_WORDS = ["كسمك", "كسمه", "كسختك", "كسم", "كس", "شرموطة", "منيوك", "ابن المتناكة", "ابن الشرموطة", "كفر", "الحمد لله", "بسم الله", "اللهم", "كسم الدين"]
+# كلمات الطرد (السب والكفر)
+BAN_WORDS = ["كسمك", "كسمه", "كسختك",]
 
-# -------------------- هياكل البيانات --------------------
-wars = {}               # المفتاح: chat_id
-clans_mgmt = {}         # تخزين المساعدين
-user_warnings = {}       # إنذارات اللاعبين
-admin_warnings = {}      # إنذارات المسؤولين
-original_msg_store = {}  # للكشف عن التعديلات
+# مخازن البيانات الشاملة
+wars = {}
+clans_mgmt = {}
+user_warnings = {}
+admin_warnings = {}
+original_msg_store = {} # لا يتم حفظ هذا في الملف لتقليل الحجم
 
-# -------------------- دوال الحفظ والتحميل --------------------
+# --- دوال الحفظ والاسترجاع (Persistence) ---
 def save_data():
+    """حفظ البيانات في ملف JSON لضمان عدم ضياعها عند الريستارت"""
     data = {
         "wars": wars,
         "clans_mgmt": clans_mgmt,
@@ -111,100 +124,70 @@ def save_data():
     }
     try:
         with open(DATA_FILE, 'w', encoding='utf-8') as f:
-            json.dump(data, f, ensure_ascii=False, indent=4, default=str)
-        print("✅ Referee data saved.")
+            json.dump(data, f, ensure_ascii=False, indent=4)
+        print("✅ Data saved successfully.")
     except Exception as e:
-        print(f"❌ Save error: {e}")
+        print(f"❌ Error saving data: {e}")
 
 def load_data():
+    """استرجاع البيانات عند تشغيل البوت"""
     global wars, clans_mgmt, user_warnings, admin_warnings
     if not os.path.exists(DATA_FILE):
         return
+    
     try:
         with open(DATA_FILE, 'r', encoding='utf-8') as f:
             data = json.load(f)
+            
+            # استرجاع البيانات مع تحويل مفاتيح القواميس إلى أرقام (Integers) لأن JSON يحفظها كنصوص
             if "wars" in data:
-                wars = {}
-                for k, v in data["wars"].items():
-                    cid = int(k)
-                    if "start_time" in v and isinstance(v["start_time"], str):
-                        v["start_time"] = datetime.fromisoformat(v["start_time"])
-                    wars[cid] = v
+                wars = {int(k): v for k, v in data["wars"].items()}
             if "clans_mgmt" in data:
                 clans_mgmt = {int(k): v for k, v in data["clans_mgmt"].items()}
             if "user_warnings" in data:
                 user_warnings = {int(k): v for k, v in data["user_warnings"].items()}
             if "admin_warnings" in data:
                 admin_warnings = {int(k): v for k, v in data["admin_warnings"].items()}
-        print("✅ Referee data loaded.")
+                
+        print("✅ Data loaded successfully.")
     except Exception as e:
-        print(f"❌ Load error: {e}")
+        print(f"❌ Error loading data: {e}")
 
-# -------------------- دوال مساعدة --------------------
+# دالة تحويل الأرقام لإيموجي
 def to_emoji(num):
     n_str = str(num)
     dic = {'0':'0️⃣','1':'1️⃣','2':'2️⃣','3':'3️⃣','4':'4️⃣','5':'5️⃣','6':'6️⃣','7':'7️⃣','8':'8️⃣','9':'9️⃣'}
-    return ''.join(dic.get(ch, ch) for ch in n_str)
+    result = ""
+    for char in n_str:
+        result += dic.get(char, char)
+    return result
 
+# دالة تنظيف النصوص
 def clean_text(text):
     if not text: return ""
     text = text.lower()
     text = text.replace('ة', 'ه').replace('أ', 'ا').replace('إ', 'ا').replace('آ', 'ا')
-    return re.sub(r'^(ال)', '', text)
+    text = re.sub(r'^(ال)', '', text)
+    return text
 
-# -------------------- وظائف الخلفية --------------------
-async def check_absence_job(context: ContextTypes.DEFAULT_TYPE):
-    now = datetime.now()
-    for cid, war in list(wars.items()):
-        if not war.get("active"):
-            continue
-        for clan_key in ["c1", "c2"]:
-            clan = war[clan_key]
-            for player in clan.get("p", []):
-                last = war.get("last_activity", {}).get(player)
-                if last and (now - last) > timedelta(hours=20):
-                    await context.bot.send_message(
-                        cid,
-                        f"⚠️ تحذير: {player} غائب 20 ساعة بدون اتفاق. سيتم التبديل إن لم يتواصل."
-                    )
-
-async def send_tac_report(context: ContextTypes.DEFAULT_TYPE):
-    cid = context.job.data["cid"]
-    if cid not in wars or not wars[cid].get("active"):
-        return
-    war = wars[cid]
-    if war.get("tac_report_sent"):
-        return
-    war["tac_report_sent"] = True
-    save_data()
-
-    report = "📊 **تقرير التاكات بعد 3 أيام**\n\n"
-    keyboard = []
-    for clan_key in ["c1", "c2"]:
-        clan = war[clan_key]
-        report += f"🔹 {clan['n']}:\n"
-        for player in clan.get("p", []):
-            taсks = war.get("taсks", {}).get(clan_key, {}).get(player, [])
-            report += f"  {player}: {len(taсks)} تاك\n"
-            if taсks:
-                keyboard.append([InlineKeyboardButton(f"✅ فاز {player}", callback_data=f"tacwin_{cid}_{clan_key}_{player}")])
-    report += "\nاضغط على اللاعب الفائز (مرة واحدة للكلان)."
-    await context.bot.send_message(cid, report, reply_markup=InlineKeyboardMarkup(keyboard))
-
-# -------------------- معالج التعديلات --------------------
+# --- ميزة مراقبة التعديلات وفضحها ---
 async def handle_edited_msg(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.edited_message or not update.edited_message.text:
         return
+    
     mid = update.edited_message.message_id
     if mid in original_msg_store:
-        old = original_msg_store[mid]
-        new = update.edited_message.text
-        if old != new:
+        old_text = original_msg_store[mid]
+        new_text = update.edited_message.text
+        if old_text != new_text:
             await update.edited_message.reply_text(
-                f"🚨 تنبيه: تم تعديل رسالة!\n📜 قبل: {old}\n🔄 بعد: {new}\n⚠️ التلاعب ممنوع."
+                f"🚨 **تنبيه: تم تعديل رسالة في جروب المواجهة!**\n\n"
+                f"📜 **الرسالة قبل التعديل:**\n`{old_text}`\n\n"
+                f"🔄 **الرسالة بعد التعديل:**\n`{new_text}`\n\n"
+                f"⚠️ التلاعب بالرسائل والقوائم ممنوع."
             )
 
-# -------------------- معالج النصوص الرئيسي --------------------
+# --- المعالج الرئيسي للمواجهة ---
 async def handle_war(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message or not update.message.text:
         return
@@ -218,482 +201,328 @@ async def handle_war(update: Update, context: ContextTypes.DEFAULT_TYPE):
     bot_username = context.bot.username
     u_tag = f"@{user.username}" if user.username else f"ID:{user.id}"
 
+    # حفظ الرسالة الأصلية فوراً
     original_msg_store[mid] = msg
 
-    # تحديد الرتبة
+    # تحديد رتبة المستخدم
+    super_admins = ["mwsa_20", "levil_8"]
     try:
         chat_member = await context.bot.get_chat_member(cid, user.id)
         is_creator = (chat_member.status == 'creator')
-        is_referee = (user.username in SUPER_ADMINS) or is_creator
+        is_referee = (user.username in super_admins) or is_creator
     except:
-        is_referee = (user.username in SUPER_ADMINS)
+        is_creator = False
+        is_referee = (user.username in super_admins)
 
-    # ----- الذكاء الاصطناعي للقوانين -----
+    # --- الرد على الاعتراضات والقوانين (بشرط المنشن) ---
     is_bot_mentioned = (f"@{bot_username}" in msg) or (update.message.reply_to_message and update.message.reply_to_message.from_user.id == context.bot.id)
     if is_bot_mentioned:
         for keyword, law_text in DETAILED_LAWS.items():
             if keyword in msg_cleaned:
                 await update.message.reply_text(law_text, disable_web_page_preview=True)
                 return
-        key_map = {
-            "قائم": "قوائم", "سكربت": "سكربت", "وقت": "وقت", "تمديد": "وقت",
-            "تواجد": "تواجد", "حضور": "تواجد", "تصوير": "تصوير", "انسحاب": "انسحاب",
-            "خروج": "انسحاب", "سب": "سب", "فار": "فار", "انتقالات": "انتقالات",
-            "عقد": "عقود", "نشر": "نشر", "حظر": "حظر", "تنازل": "حظر",
-            "اتفاق": "اتفاق", "اعتراض": "اتفاق", "تاك": "تاكات", "تبديل": "تبديلات", "حاسم": "حاسم"
-        }
-        for word, section in key_map.items():
-            if word in msg_cleaned:
-                await update.message.reply_text(DETAILED_LAWS[section], disable_web_page_preview=True)
-                return
 
-    # ----- إلغاء الإنذار -----
+    # --- ميزة إلغاء الإنذار (للسوبر أدمن فقط) ---
     if "الغاء انذار" in msg_cleaned and is_referee:
-        target = None
+        target_t = None
         if update.message.reply_to_message:
-            tu = update.message.reply_to_message.from_user
-            target = f"@{tu.username}" if tu.username else f"ID:{tu.id}"
+            t_user = update.message.reply_to_message.from_user
+            target_t = f"@{t_user.username}" if t_user.username else f"ID:{t_user.id}"
         else:
             mentions = re.findall(r'@\w+', msg)
-            if mentions: target = mentions[0]
-        if target:
-            if cid in user_warnings and target in user_warnings[cid]:
-                user_warnings[cid][target] = 0
-            if cid in admin_warnings and target in admin_warnings[cid]:
-                admin_warnings[cid][target] = 0
-            save_data()
-            await update.message.reply_text(f"✅ تم صفر إنذارات {target}.")
+            if mentions: target_t = mentions[0]
+        
+        if target_t:
+            if cid in user_warnings and target_t in user_warnings[cid]:
+                user_warnings[cid][target_t] = 0
+            if cid in admin_warnings and target_t in admin_warnings[cid]:
+                admin_warnings[cid][target_t] = 0
+            save_data() # حفظ التغيير
+            await update.message.reply_text(f"✅ تم صفر (إلغاء) كافة إنذارات {target_t} بواسطة الإدارة.")
             return
 
-    # ----- الطرد التلقائي -----
+    # --- نظام الطرد الآلي (للكفر والسب) ---
     for word in BAN_WORDS:
         if word in msg.lower():
-            if user.username not in SUPER_ADMINS:
+            if user.username not in super_admins:
                 try:
                     await context.bot.ban_chat_member(cid, user.id)
-                    await update.message.reply_text(f"🚫 تم طرد {u_tag} لاستخدام كلمات ممنوعة.")
-                except:
-                    pass
+                    await update.message.reply_text(f"🚫 تم طرد {u_tag} فوراً لانتهاك قوانين الاتحاد (سب/كفر).")
+                except: pass
             return
 
-    # ----- الروليت -----
+    # --- ميزة الروليت ---
     if "روليت" in msg:
-        mentions = re.findall(r'@\w+', msg)
-        if len(mentions) >= 2:
-            winner = random.choice(mentions)
-            await update.message.reply_text(f"🎲 الفائز بالروليت: {winner}")
+        roulette_match = re.findall(r'@\w+', msg)
+        if len(roulette_match) >= 2:
+            winner = random.choice(roulette_match)
+            await update.message.reply_text(f"🎲 **قرعة الروليت:**\n\n🏆 الفائز هو: {winner}")
             return
 
-    # ----- الإنذارات -----
+    # --- نظام الإنذارات (م) وللاعبين ---
     if update.message.reply_to_message:
-        tu = update.message.reply_to_message.from_user
-        t_tag = f"@{tu.username}" if tu.username else f"ID:{tu.id}"
+        target_user = update.message.reply_to_message.from_user
+        t_tag = f"@{target_user.username}" if target_user.username else f"ID:{target_user.id}"
+        
         if msg.strip() == "انذار م" and is_referee:
-            admin_warnings.setdefault(cid, {})
-            admin_warnings[cid][t_tag] = admin_warnings[cid].get(t_tag, 0) + 1
-            save_data()
-            await update.message.reply_text(f"⚠️ إنذار مسؤول {t_tag} ({admin_warnings[cid][t_tag]}/3)")
-            if admin_warnings[cid][t_tag] >= 3:
-                await update.message.reply_text(f"🚫 سحب صلاحية {t_tag}.")
-            return
-        if msg.strip() == "انذار" and is_referee:
-            user_warnings.setdefault(cid, {})
-            user_warnings[cid][t_tag] = user_warnings[cid].get(t_tag, 0) + 1
-            save_data()
-            await update.message.reply_text(f"⚠️ إنذار لاعب {t_tag} ({user_warnings[cid][t_tag]}/3)")
-            if user_warnings[cid][t_tag] >= 3:
-                try:
-                    await context.bot.ban_chat_member(cid, tu.id)
-                except:
-                    pass
+            if cid not in admin_warnings: admin_warnings[cid] = {}
+            count = admin_warnings[cid].get(t_tag, 0) + 1
+            admin_warnings[cid][t_tag] = count
+            save_data() # حفظ
+            await update.message.reply_text(f"⚠️ **إنذار مسؤول (م)**\n👤 المسؤول: {t_tag}\n🔢 العدد: ({count}/3)")
+            if count >= 3:
+                await update.message.reply_text(f"🚫 تم سحب صلاحيات المسؤول {t_tag} بواسطة الإدارة.")
             return
 
-    # ----- بدء المواجهة يدوياً (للاختبار) -----
-    if "CLAN" in msg_up and "VS" in msg_up and "+ 1" not in msg_up and cid not in wars:
+        if msg.strip() == "انذار" and is_referee:
+            if cid not in user_warnings: user_warnings[cid] = {}
+            count = user_warnings[cid].get(t_tag, 0) + 1
+            user_warnings[cid][t_tag] = count
+            save_data() # حفظ
+            await update.message.reply_text(f"⚠️ **إنذار لاعب**\n👤 اللاعب: {t_tag}\n🔢 العدد: ({count}/3)")
+            if count >= 3:
+                try: await context.bot.ban_chat_member(cid, target_user.id)
+                except: pass
+            return
+
+    # --- بدء المواجهة (الكلانات) ---
+    if "CLAN" in msg_up and "VS" in msg_up and "+ 1" not in msg_up:
         parts = msg_up.split(" VS ")
         c1_name = parts[0].replace("CLAN ", "").strip()
         c2_name = parts[1].replace("CLAN ", "").strip()
+        
         wars[cid] = {
             "c1": {"n": c1_name, "s": 0, "p": [], "stats": [], "leader": None},
             "c2": {"n": c2_name, "s": 0, "p": [], "stats": [], "leader": None},
             "active": True,
             "mid": None,
-            "matches": [],
-            "start_time": datetime.now(),
-            "duration_hours": 48,
-            "extended": False,
-            "taсks": {"c1": {}, "c2": {}},
-            "last_tack_time": {},
-            "replacements": {"c1": 0, "c2": 0},
-            "replacement_log": {"c1": [], "c2": []},
-            "decisive_mode": False,
-            "decisive_players": {"c1": None, "c2": None},
-            "tac_report_sent": False,
-            "last_activity": {},
-            "source_link": None,
-            "war_type": ""
+            "matches": []
         }
-        save_data()
-        await update.message.reply_text(f"⚔️ بدأت الحرب: {c1_name} vs {c2_name}")
-        try:
-            await context.bot.set_chat_title(cid, f"⚔️ {c1_name} 0 - 0 {c2_name} ⚔️")
-        except:
-            pass
-        context.job_queue.run_once(send_tac_report, timedelta(days=3), data={"cid": cid})
+        save_data() # حفظ بداية الحرب
+        await update.message.reply_text(f"⚔️ بدأت الحرب الرسمية بين:\n🔥 {c1_name} ضد {c2_name} 🔥")
+        try: await context.bot.set_chat_title(cid, f"⚔️ {c1_name} 0 - 0 {c2_name} ⚔️")
+        except: pass
         return
 
-    # ----- إذا كانت الحرب نشطة -----
     if cid in wars and wars[cid]["active"]:
         w = wars[cid]
 
-        for clan in ["c1", "c2"]:
-            if u_tag in w[clan].get("p", []):
-                w.setdefault("last_activity", {})[u_tag] = datetime.now()
-                save_data()
-                break
-
-        # ----- التاكات -----
-        if "تاك" in msg_cleaned and (update.message.reply_to_message or len(re.findall(r'@\w+', msg)) >= 2):
-            from_player = u_tag
-            to_player = None
-            if update.message.reply_to_message:
-                tu = update.message.reply_to_message.from_user
-                to_player = f"@{tu.username}" if tu.username else f"ID:{tu.id}"
+        # --- [جديد] ميزة تعيين قائد بديل يدوياً ---
+        sub_leader_match = re.search(r'مسؤول / قائد بدالي\s+(@\w+)\s+كلان\s+(.+)', msg)
+        if sub_leader_match and is_referee:
+            new_leader = sub_leader_match.group(1)
+            target_clan_name = sub_leader_match.group(2).strip().upper()
+            
+            # البحث عن الكلان المقصود
+            target_k = None
+            if w["c1"]["n"].upper() == target_clan_name: target_k = "c1"
+            elif w["c2"]["n"].upper() == target_clan_name: target_k = "c2"
+            
+            if target_k:
+                w[target_k]["leader"] = new_leader
+                save_data() # حفظ القائد الجديد
+                await update.message.reply_text(f"✅ تم تعيين {new_leader} قائداً رسمياً لكلان {w[target_k]['n']} بدلاً من القائد السابق.")
             else:
-                mentions = re.findall(r'@\w+', msg)
-                if len(mentions) >= 2:
-                    to_player = mentions[1] if mentions[0] == u_tag else mentions[0]
-            if to_player and from_player != to_player:
-                clan_from = None; clan_to = None
-                for k in ["c1", "c2"]:
-                    if from_player in w[k]["p"]: clan_from = k
-                    if to_player in w[k]["p"]: clan_to = k
-                if clan_from and clan_to and clan_from != clan_to:
-                    pair_key = f"{clan_from}_{from_player}_{clan_to}_{to_player}"
-                    last = w["last_tack_time"].get(pair_key)
-                    now = datetime.now()
-                    if last and (now - last) < timedelta(minutes=30):
-                        await update.message.reply_text("⏳ انتظر 30 دقيقة بين التاكات.")
-                        return
-                    w.setdefault("taсks", {}).setdefault(clan_to, {}).setdefault(to_player, []).append({"from": from_player, "time": now})
-                    w.setdefault("last_tack_time", {})[pair_key] = now
-                    save_data()
-                    await update.message.reply_text(f"✅ تاك من {from_player} إلى {to_player}.")
-                else:
-                    await update.message.reply_text("❌ التاك يكون بين خصمين فقط.")
+                await update.message.reply_text(f"❌ لم يتم العثور على كلان بهذا الاسم في الحرب الحالية.")
             return
 
-        # ----- تعيين قائد بديل -----
-        sub_leader = re.search(r'مسؤول / قائد بدالي\s+(@\w+)\s+كلان\s+(.+)', msg)
-        if sub_leader and is_referee:
-            new_leader = sub_leader.group(1)
-            clan_name = sub_leader.group(2).strip().upper()
-            target = "c1" if w["c1"]["n"].upper() == clan_name else ("c2" if w["c2"]["n"].upper() == clan_name else None)
-            if target:
-                w[target]["leader"] = new_leader
-                save_data()
-                await update.message.reply_text(f"✅ تم تعيين {new_leader} قائداً لكلان {w[target]['n']}.")
-            else:
-                await update.message.reply_text("❌ الكلان غير موجود.")
-            return
-
-        # ----- تسجيل القائمة -----
+        # --- تسجيل القائمة ---
         if "قائم" in msg_cleaned and update.message.reply_to_message:
             target_k = None
             if w["c1"]["n"].upper() in msg_up: target_k = "c1"
             elif w["c2"]["n"].upper() in msg_up: target_k = "c2"
+            
             if target_k:
-                other_k = "c2" if target_k == "c1" else "c1"
-                if not is_referee and w[other_k]["leader"] == u_tag:
-                    await update.message.reply_text("❌ لا يمكنك إرسال قائمة الخصم.")
-                    return
+                if is_referee:
+                    pass 
+                else:
+                    other_k = "c2" if target_k == "c1" else "c1"
+                    if w[other_k]["leader"] == u_tag:
+                        await update.message.reply_text("❌ أنت قائد الكلان الخصم، لا يمكنك إرسال قائمة منافسك!")
+                        return
+
                 w[target_k]["leader"] = u_tag
-                players = [p.strip() for p in update.message.reply_to_message.text.split('\n') if p.startswith('@')]
-                w[target_k]["p"] = players
-                save_data()
-                await update.message.reply_text(f"✅ تم اعتماد قائمة {w[target_k]['n']}.")
+                w[target_k]["p"] = [p.strip() for p in update.message.reply_to_message.text.split('\n') if p.startswith('@')]
+                save_data() # حفظ القائمة
+                await update.message.reply_text(f"✅ تم اعتماد القائمة لـ {w[target_k]['n']} (بواسطة {u_tag}).")
+
                 if w["c1"]["p"] and w["c2"]["p"]:
-                    p1 = list(w["c1"]["p"]); p2 = list(w["c2"]["p"])
-                    random.shuffle(p1); random.shuffle(p2)
+                    p1 = list(w["c1"]["p"])
+                    p2 = list(w["c2"]["p"])
+                    random.shuffle(p1)
+                    random.shuffle(p2)
                     w["matches"] = [{"p1": u1, "p2": u2, "s1": 0, "s2": 0} for u1, u2 in zip(p1, p2)]
-                    save_data()
-                    rows = [f"{i+1} | {m['p1']} {to_emoji(0)}|🆚|{to_emoji(0)} {m['p2']} |" for i, m in enumerate(w["matches"])]
-                    table = f"A- [ {w['c1']['n']} ] | 𝗩𝗦 | B- [ {w['c2']['n']} ]\n───\n" + "\n".join(rows) + f"\n───\n⌛ يومين\n🔗 {AU_LINK}"
+                    save_data() # حفظ الجدول
+                    
+                    rows = []
+                    for i, m in enumerate(w["matches"]):
+                        rows.append(f"{i+1} | {m['p1']} {to_emoji(0)}|🆚|{to_emoji(0)} {m['p2']} |")
+                    
+                    table = f"A- [ {w['c1']['n']} ] | 𝗩𝗦 | B- [ {w['c2']['n']} ]\n───\n" + "\n".join(rows) + f"\n───\n⌛ يومين وينتهي الوقت\n🔗 {AU_LINK}"
                     sent = await update.message.reply_text(table, disable_web_page_preview=True)
                     w["mid"] = sent.message_id
-                    save_data()
+                    save_data() # حفظ آيدي رسالة الجدول
+                    
+                    # --- [إضافة] تثبيت الرسالة تلقائياً ---
                     try:
-                        await context.bot.pin_chat_message(cid, sent.message_id)
-                    except:
-                        pass
+                        await context.bot.pin_chat_message(chat_id=cid, message_id=sent.message_id)
+                    except Exception as e:
+                        print(f"Error pinning message: {e}")
             return
 
-        # ----- تحديد المساعد -----
-        asst = re.search(r'مساعدي\s+(@\w+)\s+كلان\s+(\w+)', msg)
-        if asst:
-            target_asst = asst.group(1)
-            clan_name = asst.group(2).upper()
-            target = "c1" if w["c1"]["n"].upper() == clan_name else ("c2" if w["c2"]["n"].upper() == clan_name else None)
-            if target and (w[target]["leader"] == u_tag or is_referee):
-                clans_mgmt.setdefault(cid, {})[clan_name] = {"asst": target_asst}
-                save_data()
-                await update.message.reply_text(f"✅ مساعد {target_asst} لكلان {clan_name}.")
-            else:
-                await update.message.reply_text("❌ غير مصرح.")
+        # --- تحديد المساعد ---
+        asst_match = re.search(r'مساعدي\s+(@\w+)\s+كلان\s+(\w+)', msg)
+        if asst_match:
+            target_asst = asst_match.group(1)
+            clan_name = asst_match.group(2).upper()
+            target_key = "c1" if w["c1"]["n"].upper() == clan_name else ("c2" if w["c2"]["n"].upper() == clan_name else None)
+            
+            if target_key and (w[target_key]["leader"] == u_tag or is_referee):
+                if cid not in clans_mgmt: clans_mgmt[cid] = {}
+                clans_mgmt[cid][clan_name] = {"asst": target_asst}
+                save_data() # حفظ المساعد
+                await update.message.reply_text(f"✅ تم تعيين المساعد {target_asst} لكلان {clan_name}.")
+            elif target_key:
+                await update.message.reply_text("❌ فقط قائد الكلان أو الحكم يمكنه تحديد المساعد.")
             return
 
-        # ----- التبديلات -----
-        sub = re.search(r'تبديل\s+(\w+)\s+(@\w+)\s+(@\w+)', msg)
-        if sub:
-            clan_name = sub.group(1).upper()
-            old = sub.group(2)
-            new = sub.group(3)
-            target = "c1" if w["c1"]["n"].upper() == clan_name else ("c2" if w["c2"]["n"].upper() == clan_name else None)
-            if not target:
-                await update.message.reply_text("❌ اسم الكلان غير صحيح.")
-                return
-            asst_tag = clans_mgmt.get(cid, {}).get(w[target]["n"].upper(), {}).get("asst")
-            if not (is_referee or u_tag == w[target]["leader"] or u_tag == asst_tag):
-                await update.message.reply_text("❌ غير مصرح بالتبديل.")
-                return
-            if w["replacements"][target] >= 3:
-                await update.message.reply_text("❌ استنفدت التبديلات.")
-                return
-            found = False
-            for match in w["matches"]:
-                if match["p1"] == old or match["p2"] == old:
-                    if match["p1"] == old: match["p1"] = new
-                    else: match["p2"] = new
-                    found = True
-                    break
-            if not found:
-                await update.message.reply_text("❌ اللاعب القديم غير موجود.")
-                return
-            w["replacements"][target] += 1
-            w["replacement_log"][target].append({"old": old, "new": new, "time": datetime.now()})
-            save_data()
-            await update.message.reply_text(f"✅ تم التبديل. تبقت {3 - w['replacements'][target]} تبديلات.")
-            if w["mid"]:
-                rows = [f"{i+1} | {m['p1']} {to_emoji(m['s1'])}|🆚|{to_emoji(m['s2'])} {m['p2']} |" for i, m in enumerate(w["matches"])]
-                updated = f"A- [ {w['c1']['n']} ] | 𝗩𝗦 | B- [ {w['c2']['n']} ]\n───\n" + "\n".join(rows) + f"\n───\n⌛ يومين\n🔗 {AU_LINK}"
-                try:
-                    await context.bot.edit_message_text(updated, cid, w["mid"], disable_web_page_preview=True)
-                except:
-                    pass
-            return
-
-        # ----- الحاسم -----
-        decisive = re.search(r'حاسم\s+(\w+)\s+(@\w+)', msg)
-        if decisive and w["c1"]["s"] == 3 and w["c2"]["s"] == 3 and not w["decisive_mode"]:
-            clan_name = decisive.group(1).upper()
-            player = decisive.group(2)
-            target = "c1" if w["c1"]["n"].upper() == clan_name else ("c2" if w["c2"]["n"].upper() == clan_name else None)
-            if not target:
-                await update.message.reply_text("❌ اسم الكلان خطأ.")
-                return
-            asst_tag = clans_mgmt.get(cid, {}).get(w[target]["n"].upper(), {}).get("asst")
-            if not (is_referee or u_tag == w[target]["leader"] or u_tag == asst_tag):
-                await update.message.reply_text("❌ غير مصرح.")
-                return
-            if player not in w[target]["p"]:
-                await update.message.reply_text("❌ اللاعب ليس في القائمة.")
-                return
-            w["decisive_players"][target] = player
-            save_data()
-            await update.message.reply_text(f"✅ تم تحديد {player} كلاعب حاسم لـ {w[target]['n']}.")
-            if w["decisive_players"]["c1"] and w["decisive_players"]["c2"]:
-                w["decisive_mode"] = True
-                await update.message.reply_text(f"🔥 وضع الحاسم! {w['decisive_players']['c1']} vs {w['decisive_players']['c2']}")
-            return
-
-        # ----- إضافة النقاط -----
+        # --- نظام إضافة النقاط وتحديث المباريات ---
         if "+ 1" in msg_up or "+1" in msg_up:
             players = re.findall(r'@\w+', msg_up)
             scores = re.findall(r'(\d+)', msg_up)
             win_k = "c1" if w["c1"]["n"].upper() in msg_up else ("c2" if w["c2"]["n"].upper() in msg_up else None)
-            if not win_k:
-                return
+            if not win_k: return
+
             if len(players) >= 2 and len(scores) >= 2:
                 asst_tag = clans_mgmt.get(cid, {}).get(w[win_k]["n"].upper(), {}).get("asst")
                 if not (is_referee or u_tag == w[win_k]["leader"] or u_tag == asst_tag):
-                    await update.message.reply_text("❌ غير مصرح بالتسجيل.")
+                    await update.message.reply_text("❌ عذراً، التسجيل مسموح للحكام أو القادة/المساعدين فقط.")
                     return
-                u1, u2 = players[0], players[1]
+
+                u1, u2 = players[0], players[1] # أسماء اللاعبين (UPPERCASE بسبب regex)
                 sc1, sc2 = int(scores[0]), int(scores[1])
                 p_win = u1 if sc1 > sc2 else u2
+                
                 w[win_k]["s"] += 1
                 w[win_k]["stats"].append({"name": p_win, "goals": max(sc1, sc2), "rec": min(sc1, sc2), "is_free": False})
+                
+                # --- تحديث نتيجة المباراة في الجدول (إصلاح عدم التحديث) ---
                 for m in w["matches"]:
-                    if (u1 == m["p1"].upper() or u1 == m["p2"].upper()) and (u2 == m["p1"].upper() or u2 == m["p2"].upper()):
-                        if u1 == m["p1"].upper(): m["s1"], m["s2"] = sc1, sc2
-                        else: m["s1"], m["s2"] = sc2, sc1
-                        break
-                save_data()
-                await update.message.reply_text(f"✅ نقطة لـ {w[win_k]['n']}.")
-                try:
-                    await context.bot.set_chat_title(cid, f"⚔️ {w['c1']['n']} {w['c1']['s']} - {w['c2']['s']} {w['c2']['n']} ⚔️")
-                except:
-                    pass
-                if w["mid"]:
-                    rows = [f"{i+1} | {m['p1']} {to_emoji(m['s1'])}|🆚|{to_emoji(m['s2'])} {m['p2']} |" for i, m in enumerate(w["matches"])]
-                    updated = f"A- [ {w['c1']['n']} ] | 𝗩𝗦 | B- [ {w['c2']['n']} ]\n───\n" + "\n".join(rows) + f"\n───\n⌛ يومين\n🔗 {AU_LINK}"
-                    try:
-                        await context.bot.edit_message_text(updated, cid, w["mid"], disable_web_page_preview=True)
-                    except:
-                        pass
-                # التحقق من الفوز (4 نقاط)
-                if w[win_k]["s"] >= 4:
-                    w["active"] = False
-                    save_data()
-                    real = [h for h in w[win_k]["stats"] if not h.get("is_free")]
-                    if real:
-                        hasm = real[-1]["name"]
-                        star_data = max(real, key=lambda x: x["goals"] - x["rec"])
-                        star = star_data["name"]
-                        star_goals, star_rec = star_data["goals"], star_data["rec"]
-                        result = f"🎊 فاز {w[win_k]['n']}!\n🎯 الحاسم: {hasm}\n⭐ النجم: {star} ({star_goals}-{star_rec})"
-                    else:
-                        result = f"🎊 فوز إداري لـ {w[win_k]['n']}."
-                    await update.message.reply_text(result)
-                    details = "📊 النتائج:\n"
-                    for i, m in enumerate(w["matches"]):
-                        details += f"{i+1}. {m['p1']} {to_emoji(m['s1'])} - {to_emoji(m['s2'])} {m['p2']}\n"
-                    await update.message.reply_text(details)
+                    # نحول أسماء اللاعبين في الجدول لحروف كبيرة للمقارنة فقط
+                    mp1_u = m["p1"].upper()
+                    mp2_u = m["p2"].upper()
+                    
+                    if (u1 == mp1_u or u1 == mp2_u) and (u2 == mp1_u or u2 == mp2_u):
+                        # تحديث النتائج بناءً على مكان اللاعب في الجدول
+                        if u1 == mp1_u:
+                            m["s1"], m["s2"] = sc1, sc2
+                        else:
+                            m["s1"], m["s2"] = sc2, sc1
+                
+                save_data() # حفظ النتيجة وتحديث المباريات
+                await update.message.reply_text(f"✅ تم تسجيل نقطة مباراة لـ {w[win_k]['n']}.")
 
-                    # إرسال إشعار إلى بوت النشر
-                    source = w.get("source_link", "غير معروف")
-                    try:
-                        await context.bot.send_message(
-                            chat_id=PUBLISHER_BOT_ID,
-                            text=f"انتهت_مواجهة {cid} {w[win_k]['n']} {w['c1']['s']} {w['c2']['s']} {star} {hasm} {source}"
-                        )
-                    except Exception as e:
-                        print(f"❌ Failed to notify publisher: {e}")
             else:
                 if not is_referee:
-                    await update.message.reply_text("❌ النقطة الفري للإدارة فقط.")
+                    await update.message.reply_text("❌ النقطة الفري حصرية للإدارة.")
                     return
+                
                 w[win_k]["s"] += 1
                 w[win_k]["stats"].append({"name": "Free Point", "goals": 0, "rec": 0, "is_free": True})
-                save_data()
-                await update.message.reply_text(f"⚖️ نقطة فري لـ {w[win_k]['n']}.")
-                try:
-                    await context.bot.set_chat_title(cid, f"⚔️ {w['c1']['n']} {w['c1']['s']} - {w['c2']['s']} {w['c2']['n']} ⚔️")
-                except:
-                    pass
+                save_data() # حفظ النقطة الفري
+                await update.message.reply_text(f"⚖️ قرار إداري: إضافة نقطة فري لكلان {w[win_k]['n']} بواسطة {u_tag}.")
 
-    # ----- استقبال أمر بدء المواجهة من بوت النشر -----
+            try: await context.bot.set_chat_title(cid, f"⚔️ {w['c1']['n']} {w['c1']['s']} - {w['c2']['s']} {w['c2']['n']} ⚔️")
+            except: pass
+
+            # تحديث الجدول المعروض في التليجرام
+            if w["mid"]:
+                rows = [f"{i+1} | {m['p1']} {to_emoji(m['s1'])}|🆚|{to_emoji(m['s2'])} {m['p2']} |" for i, m in enumerate(w["matches"])]
+                updated_table = f"A- [ {w['c1']['n']} ] | 𝗩𝗦 | B- [ {w['c2']['n']} ]\n───\n" + "\n".join(rows) + f"\n───\n⌛ يومين وينتهي الوقت\n🔗 {AU_LINK}"
+                try: await context.bot.edit_message_text(updated_table, cid, w["mid"], disable_web_page_preview=True)
+                except: pass
+            
+            # --- إنهاء الحرب وإرسال النتائج النهائية ---
+            if w[win_k]["s"] >= 4:
+                w["active"] = False
+                save_data() # حفظ نهاية الحرب
+                history = w[win_k]["stats"]
+                real_players = [h for h in history if not h["is_free"]]
+                
+                if real_players:
+                    hasm = real_players[-1]["name"]
+                    # --- [تعديل] اختيار النجم: أكثر لاعب سجل وما استقبل (أعلى فارق أهداف) ---
+                    star_player_data = max(real_players, key=lambda x: (x["goals"] - x["rec"]))
+                    star = star_player_data["name"]
+                    star_goals = star_player_data["goals"]
+                    star_rec = star_player_data["rec"]
+                    
+                    result_msg = (
+                        f"🎊 انتهت الحرب بفوز كلان: {w[win_k]['n']} 🎊\n\n"
+                        f"🎯 الحاسم: {hasm} (آخر من سجل)\n"
+                        f"⭐ النجم: {star} (سجل {star_goals} واستقبل {star_rec})"
+                    )
+                else:
+                    result_msg = f"🎊 انتهت الحرب بفوز إداري لكلان: {w[win_k]['n']} 🎊"
+                
+                # إرسال رسالة النتيجة أولاً
+                await update.message.reply_text(result_msg)
+    # --- استقبال أوامر بوت النشر ---
     if "بدء مواجهة:" in msg:
-        link_match = re.search(r'الرابط:\s*(.+)', msg)
-        type_match = re.search(r'النوع:\s*(.+)', msg)
-        clans_match = re.search(r'الكلانات:\s*(.+)', msg)
+        # استخراج البيانات من النص المرسل
+        link_match = re.search(r'الرابط: (.+)', msg)
+        type_match = re.search(r'النوع: (.+)', msg)
+        clans_match = re.search(r'الكلانات: (.+)', msg)
+        
         if link_match and clans_match:
-            source_url = link_match.group(1).strip()
-            war_type = type_match.group(1).strip() if type_match else ""
-            clans_text = clans_match.group(1).strip().upper()
-            parts = clans_text.split(" VS ")
-            if len(parts) != 2:
-                await update.message.reply_text("❌ صيغة الكلانات غير صحيحة.")
-                return
+            source_url = link_match.group(1)
+            war_type = type_match.group(1)
+            clans_text = clans_match.group(1)
+            
+            # استخراج الأسماء لبدء الحرب
+            parts = clans_text.upper().split(" VS ")
             c1_n = parts[0].replace("CLAN ", "").strip()
             c2_n = parts[1].replace("CLAN ", "").strip()
 
-            # بدء الحرب
+            # بدء الحرب في ذاكرة بوت الحكم
             wars[cid] = {
                 "c1": {"n": c1_n, "s": 0, "p": [], "stats": [], "leader": None},
                 "c2": {"n": c2_n, "s": 0, "p": [], "stats": [], "leader": None},
-                "active": True,
-                "mid": None,
-                "matches": [],
-                "start_time": datetime.now(),
-                "duration_hours": 48,
-                "extended": False,
-                "taсks": {"c1": {}, "c2": {}},
-                "last_tack_time": {},
-                "replacements": {"c1": 0, "c2": 0},
-                "replacement_log": {"c1": [], "c2": []},
-                "decisive_mode": False,
-                "decisive_players": {"c1": None, "c2": None},
-                "tac_report_sent": False,
-                "last_activity": {},
-                "source_link": source_url,
-                "war_type": war_type
+                "active": True, "mid": None, "matches": [], "source_link": source_url
             }
             save_data()
-            # تغيير اسم الجروب على الفور
+
+            # تغيير الاسم والوصف تلقائياً
             try:
-                new_title = f"⚔️ {c1_n} 0 - 0 {c2_n} {war_type} ⚔️"
-                await context.bot.set_chat_title(cid, new_title)
-                await context.bot.set_chat_description(cid, f"مواجهة: {source_url}")
+                await context.bot.set_chat_title(cid, f"⚔️ {c1_n} 0 - 0 {c2_n} {war_type}")
+                await context.bot.set_chat_description(cid, f"مواجهة رسمية بين {c1_n} و {c2_n}\nالمنظم: موجود\nرابط المنشور: {source_url}")
             except Exception as e:
-                print(f"Error setting title/description: {e}")
-            await update.message.reply_text("🚀 تم بدء المواجهة بناءً على أمر بوت النشر.")
-            context.job_queue.run_once(send_tac_report, timedelta(days=3), data={"cid": cid})
+                print(f"Error updating chat: {e}")
+
+            await update.message.reply_text(f"🚀 تم استلام البيانات من بوت النشر.\nتم تحديث اسم الجروب والوصف وبدء الحرب!")
             return
 
-    # ----- الاعتراض على البوت -----
-    if "اعتراض" in msg_cleaned or "عندي اعتراض" in msg_cleaned:
-        context.user_data["awaiting_objection"] = {"cid": cid, "user": u_tag}
-        await update.message.reply_text("✍️ اكتب اعتراضك بالتفصيل وسيتم تحويله للحكام.")
-        return
 
-# -------------------- معالج الاعتراضات --------------------
-async def handle_objection_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if context.user_data.get("awaiting_objection"):
-        data = context.user_data["awaiting_objection"]
-        cid = data["cid"]
-        user = data["user"]
-        obj_text = update.message.text
-        REF_GROUP = -1001234567890  # غيّره لمعرف مجموعة الحكام الحقيقية
-        try:
-            await context.bot.send_message(
-                REF_GROUP,
-                f"⚠️ اعتراض من {user} في {cid}:\n{obj_text}"
-            )
-            await update.message.reply_text("✅ تم إرسال اعتراضك.")
-        except:
-            await update.message.reply_text("❌ فشل الإرسال للحكام.")
-        del context.user_data["awaiting_objection"]
-    else:
-        pass
+                # --- إرسال تفاصيل النتائج الواقعية (ليست 0/0) ---
+                match_results_str = ""
+                for i, m in enumerate(w["matches"]):
+                    line = f"{i+1} | {m['p1']} {to_emoji(m['s1'])}|🆚|{to_emoji(m['s2'])} {m['p2']} |"
+                    match_results_str += line + "\n"
+                    match_results_str += "─── ─── ─── ─── ───\n"
+                
+                # إرسال الرسالة النهائية
+                await update.message.reply_text(f"📊 **تفاصيل النتائج:**\n\n{match_results_str}")
 
-# -------------------- معالج الأزرار --------------------
-async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    data = query.data
-    if data.startswith("tacwin_"):
-        parts = data.split("_")
-        cid = int(parts[1])
-        clan_key = parts[2]
-        player = parts[3]
-        if cid in wars and wars[cid]["active"]:
-            war = wars[cid]
-            war[clan_key]["s"] += 1
-            war[clan_key]["stats"].append({"name": f"TacWin_{player}", "goals": 0, "rec": 0, "is_free": True})
-            save_data()
-            await query.edit_message_text(f"✅ تم إضافة نقطة فري لـ {war[clan_key]['n']} بفوز {player} في التاكات.")
-            try:
-                await context.bot.set_chat_title(cid, f"⚔️ {war['c1']['n']} {war['c1']['s']} - {war['c2']['s']} {war['c2']['n']} ⚔️")
-            except:
-                pass
-
-# -------------------- التشغيل --------------------
+# --- تشغيل البوت ---
 if __name__ == "__main__":
     threading.Thread(target=run_flask).start()
     app = Application.builder().token(TOKEN).build()
+    
+    # تحميل البيانات المحفوظة عند التشغيل
     load_data()
-
+    
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_war))
     app.add_handler(MessageHandler(filters.UpdateType.EDITED_MESSAGE, handle_edited_msg))
-    app.add_handler(CallbackQueryHandler(button_callback))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_objection_text), group=1)
-
-    if app.job_queue:
-        app.job_queue.run_repeating(check_absence_job, interval=3600, first=10)
-        print("✅ JobQueue active.")
-    else:
-        print("⚠️ JobQueue not available.")
-
-    print("✅ Referee Bot is running...")
+    
+    print("✅ البوت يعمل الآن (مع خاصية حفظ البيانات وتحديث النتائج واقعياً)...")
     app.run_polling()
