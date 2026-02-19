@@ -190,26 +190,16 @@ async def cleanup_group(context: ContextTypes.DEFAULT_TYPE):
     cid = job.chat_id
     
     try:
-        # الحصول على قائمة الأعضاء (هذا يتطلب أن يكون البوت مشرفاً)
-        # ملاحظة: برمجياً لا يمكن للبوت جلب قائمة كل الأعضاء دفعة واحدة في المجموعات الكبيرة، 
-        # لذا سنعتمد على أن أي شخص يتفاعل سيتم طرده، ولكن الأساس هو إرسال رسالة تنبيه وطرد القادة واللاعبين المسجلين
-        
         target_war = wars.get(cid)
         if target_war:
             all_involved = set()
             if "c1" in target_war: all_involved.update(target_war["c1"]["p"])
             if "c2" in target_war: all_involved.update(target_war["c2"]["p"])
-            
-            for player_tag in all_involved:
-                try:
-                    # محاولة الطرد باليوزر لو متاح (يتطلب تحويل اليوزر لآيدي)
-                    # كحل عملي: البوت سيطرد أي شخص يحاول التحدث بعد المهلة أو القادة
-                    pass
-                except: pass
+            # هنا يمكنك إضافة كود طرد الأعضاء إذا كان البوت مشرفاً
 
         await context.bot.send_message(cid, "🚨 **انتهت مهلة الـ 10 ساعات.**\nيتم الآن تنظيف الجروب وإتاحته لمواجهة جديدة.")
         
-        # إعادة تهيئة الجروب في السجلات
+        # إعادة تهيئة الجروب في السجلات لفتحه
         if cid in wars:
             p_link = wars[cid].get("post_link")
             if p_link in post_to_group:
@@ -287,13 +277,13 @@ async def handle_war(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         target_cid = None
         for g_id in AVAILABLE_GROUPS:
-            # الجروب يعتبر متاحاً فقط إذا لم يكن مسجلاً في wars أو حالته active هي False
+            # الجروب يعتبر متاحاً فقط إذا لم يكن مسجلاً في wars أو حالته active هي False (تم تنظيفه)
             if g_id not in wars or wars[g_id].get("active") == False:
                 target_cid = g_id
                 break
         
         if target_cid:
-            # حجز الجروب فوراً لمنع التداخل
+            # البدء بتحديث البيانات لحجز الجروب فوراً
             wars[target_cid] = {
                 "c1": {"n": c1_name, "s": 0, "p": [], "stats": [], "leader": None},
                 "c2": {"n": c2_name, "s": 0, "p": [], "stats": [], "leader": None},
@@ -303,17 +293,18 @@ async def handle_war(update: Update, context: ContextTypes.DEFAULT_TYPE):
             save_data()
             
             try:
-                # 1. تغيير اسم المجموعة أولاً
+                # 1. تغيير اسم المجموعة أولاً (لضمان ظهور الاسم الجديد قبل الرسالة)
                 try:
                     await context.bot.set_chat_title(target_cid, f"⚔️ {c1_name} 0 - 0 {c2_name} ⚔️")
-                except: pass
+                except Exception as e:
+                    print(f"Title update error: {e}")
                 
-                # 2. إرسال رسالة البدء وتثبيتها
+                # 2. إرسال رسالة البدء وتثبيتها بعد تغيير الاسم
                 start_msg = await context.bot.send_message(target_cid, f"⚔️ بدأت الحرب الرسمية بين:\n🔥 {c1_name} ضد {c2_name} 🔥\n🔗 رابط المنشور: {post_link}")
                 await context.bot.pin_chat_message(target_cid, start_msg.message_id)
                 
                 group_info = await context.bot.get_chat(target_cid)
-                await update.message.reply_text(f"✅ تم تجهيز المواجهة!\nالجروب: {group_info.title}\nالرابط: {group_info.invite_link if group_info.invite_link else 'ادخل الجروب المخصص'}")
+                await update.message.reply_text(f"✅ تم تجهيز المواجهة!\nالجروب: {c1_name} VS {c2_name}\nالرابط: {group_info.invite_link if group_info.invite_link else 'ادخل الجروب المخصص'}")
             except Exception as e:
                 await update.message.reply_text(f"❌ حدث خطأ أثناء تجهيز الجروب: {str(e)}")
         else:
@@ -450,10 +441,7 @@ async def handle_war(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     save_data()
                 
                 try:
-                    # محاولة تحديث اسم الجروب مع تفادي الخطأ
-                    try:
-                        await context.bot.set_chat_title(cid, f"⚔️ {w['c1']['n']} {w['c1']['s']} - {w['c2']['s']} {w['c2']['n']} ⚔️")
-                    except: pass
+                    await context.bot.set_chat_title(cid, f"⚔️ {w['c1']['n']} {w['c1']['s']} - {w['c2']['s']} {w['c2']['n']} ⚔️")
                 except: pass
                 
                 if w["mid"]:
@@ -476,8 +464,6 @@ async def handle_war(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     else: res = f"🎊 فوز إداري لـ {w[win_k]['n']} 🎊"
                     
                     await update.message.reply_text(f"{res}\n\n⚠️ **تنبيه:** سيتم تنظيف الجروب وطرد الجميع تلقائياً بعد 10 ساعات من الآن.")
-                    
-                    # جدولة عملية الطرد بعد 10 ساعات
                     context.job_queue.run_once(cleanup_group, when=timedelta(hours=10), chat_id=cid)
 
 # --- تشغيل البوت ---
