@@ -467,6 +467,17 @@ async def handle_war(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 
                 # إرسال رسالة النتيجة أولاً
                 await update.message.reply_text(result_msg)
+
+                # --- إرسال تفاصيل النتائج النهائية (تم تصحيح الإزاحة هنا) ---
+                match_results_str = ""
+                for i, m in enumerate(w["matches"]):
+                    line = f"{i+1} | {m['p1']} {to_emoji(m['s1'])}|🆚|{to_emoji(m['s2'])} {m['p2']} |"
+                    match_results_str += line + "\n"
+                    match_results_str += "─── ─── ─── ─── ───\n"
+                
+                # إرسال الرسالة النهائية
+                await update.message.reply_text(f"📊 **تفاصيل النتائج:**\n\n{match_results_str}")
+
     # --- استقبال أوامر بوت النشر ---
     if "بدء مواجهة:" in msg:
         # استخراج البيانات من النص المرسل
@@ -501,17 +512,6 @@ async def handle_war(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
             await update.message.reply_text(f"🚀 تم استلام البيانات من بوت النشر.\nتم تحديث اسم الجروب والوصف وبدء الحرب!")
             return
-
-
-                # --- إرسال تفاصيل النتائج الواقعية (ليست 0/0) ---
-                match_results_str = ""
-                for i, m in enumerate(w["matches"]):
-                    line = f"{i+1} | {m['p1']} {to_emoji(m['s1'])}|🆚|{to_emoji(m['s2'])} {m['p2']} |"
-                    match_results_str += line + "\n"
-                    match_results_str += "─── ─── ─── ─── ───\n"
-                
-                # إرسال الرسالة النهائية
-                await update.message.reply_text(f"📊 **تفاصيل النتائج:**\n\n{match_results_str}")
 
 # --- تشغيل البوت ---
 if __name__ == "__main__":
