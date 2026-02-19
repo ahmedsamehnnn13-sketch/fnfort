@@ -20,6 +20,8 @@ def run_flask():
 
 # -------------------- الثوابت --------------------
 TOKEN = "8546666050:AAFt7buGH1xrVTTWa-lrIhOdesG_sk2n_bM"  # توكن بوت الحكم
+PUBLISHER_BOT_USERNAME = "@OACVBOT"  # يوزر بوت النشر (للتأكد من المرسل عند بدء المواجهة)
+ORGANIZER_CHAT_ID = -1002029492622  # معرف مجموعة المنظمين (سيُرسل إليه تقرير الانتهاء)
 AU_LINK = "https://t.me/arab_union3"
 DATA_FILE = "referee_data.json"
 SUPER_ADMINS = ["mwsa_20", "levil_8"]  # السوبر أدمن
@@ -126,11 +128,10 @@ def load_data():
                 wars = {}
                 for k, v in data["wars"].items():
                     cid = int(k)
-                    # تحويل التواريخ المخزنة كنصوص
-                    if "start_time" in v:
+                    if "start_time" in v and isinstance(v["start_time"], str):
                         v["start_time"] = datetime.fromisoformat(v["start_time"])
-                    if "taсks" in v:  # قد يكون الاسم به مشكلة ترميز، سنستخدم "tacks" بدلاً من ذلك
-                        pass  # سيتم إعادة بنائها لاحقاً
+                    if "taсks" in v:
+                        pass
                     wars[cid] = v
             if "clans_mgmt" in data:
                 clans_mgmt = {int(k): v for k, v in data["clans_mgmt"].items()}
@@ -157,11 +158,10 @@ def clean_text(text):
 def is_official_time(dt=None):
     if dt is None:
         dt = datetime.now()
-    return dt.hour >= 9 or dt.hour < 1  # 9-23 و 0-1
+    return dt.hour >= 9 or dt.hour < 1
 
 # -------------------- وظائف الخلفية --------------------
 async def check_absence_job(context: ContextTypes.DEFAULT_TYPE):
-    """مراقبة غياب اللاعبين كل ساعة"""
     now = datetime.now()
     for cid, war in list(wars.items()):
         if not war.get("active"):
@@ -175,10 +175,8 @@ async def check_absence_job(context: ContextTypes.DEFAULT_TYPE):
                         cid,
                         f"⚠️ تحذير: {player} غائب 20 ساعة بدون اتفاق. سيتم التبديل إن لم يتواصل."
                     )
-                    # يمكن تنفيذ التبديل التلقائي هنا
 
 async def send_tac_report(context: ContextTypes.DEFAULT_TYPE):
-    """تقرير التاكات بعد 3 أيام"""
     cid = context.job.data["cid"]
     if cid not in wars or not wars[cid].get("active"):
         return
@@ -188,7 +186,6 @@ async def send_tac_report(context: ContextTypes.DEFAULT_TYPE):
     war["tac_report_sent"] = True
     save_data()
 
-    # تجميع التاكات
     report = "📊 **تقرير التاكات بعد 3 أيام**\n\n"
     keyboard = []
     for clan_key in ["c1", "c2"]:
@@ -229,10 +226,8 @@ async def handle_war(update: Update, context: ContextTypes.DEFAULT_TYPE):
     bot_username = context.bot.username
     u_tag = f"@{user.username}" if user.username else f"ID:{user.id}"
 
-    # حفظ الرسالة الأصلية
     original_msg_store[mid] = msg
 
-    # تحديد الرتبة
     try:
         chat_member = await context.bot.get_chat_member(cid, user.id)
         is_creator = (chat_member.status == 'creator')
@@ -247,7 +242,6 @@ async def handle_war(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if keyword in msg_cleaned:
                 await update.message.reply_text(law_text, disable_web_page_preview=True)
                 return
-        # إذا لم يجد، نبحث بكلمات مفتاحية
         key_map = {
             "قائم": "قوائم", "سكربت": "سكربت", "وقت": "وقت", "تمديد": "وقت",
             "تواجد": "تواجد", "حضور": "تواجد", "تصوير": "تصوير", "انسحاب": "انسحاب",
@@ -260,7 +254,7 @@ async def handle_war(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await update.message.reply_text(DETAILED_LAWS[section], disable_web_page_preview=True)
                 return
 
-    # ----- إلغاء الإنذار (للمشرفين) -----
+    # ----- إلغاء الإنذار -----
     if "الغاء انذار" in msg_cleaned and is_referee:
         target = None
         if update.message.reply_to_message:
@@ -278,7 +272,7 @@ async def handle_war(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text(f"✅ تم صفر إنذارات {target}.")
             return
 
-    # ----- الطرد التلقائي للكلمات الممنوعة -----
+    # ----- الطرد التلقائي -----
     for word in BAN_WORDS:
         if word in msg.lower():
             if user.username not in SUPER_ADMINS:
@@ -321,7 +315,7 @@ async def handle_war(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     pass
             return
 
-    # ----- بدء المواجهة يدوياً (إذا لم تكن حرب نشطة) -----
+    # ----- بدء المواجهة يدوياً -----
     if "CLAN" in msg_up and "VS" in msg_up and "+ 1" not in msg_up and cid not in wars:
         parts = msg_up.split(" VS ")
         c1_name = parts[0].replace("CLAN ", "").strip()
@@ -350,7 +344,6 @@ async def handle_war(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await context.bot.set_chat_title(cid, f"⚔️ {c1_name} 0 - 0 {c2_name} ⚔️")
         except:
             pass
-        # جدولة تقرير التاكات بعد 3 أيام
         context.job_queue.run_once(send_tac_report, timedelta(days=3), data={"cid": cid})
         return
 
@@ -358,7 +351,6 @@ async def handle_war(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if cid in wars and wars[cid]["active"]:
         w = wars[cid]
 
-        # تحديث آخر نشاط للاعب
         for clan in ["c1", "c2"]:
             if u_tag in w[clan].get("p", []):
                 w.setdefault("last_activity", {})[u_tag] = datetime.now()
@@ -377,21 +369,17 @@ async def handle_war(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 if len(mentions) >= 2:
                     to_player = mentions[1] if mentions[0] == u_tag else mentions[0]
             if to_player and from_player != to_player:
-                # تحديد الانتماء
-                clan_from = None
-                clan_to = None
+                clan_from = None; clan_to = None
                 for k in ["c1", "c2"]:
                     if from_player in w[k]["p"]: clan_from = k
                     if to_player in w[k]["p"]: clan_to = k
                 if clan_from and clan_to and clan_from != clan_to:
-                    # التحقق من 30 دقيقة
                     pair_key = f"{clan_from}_{from_player}_{clan_to}_{to_player}"
                     last = w["last_tack_time"].get(pair_key)
                     now = datetime.now()
                     if last and (now - last) < timedelta(minutes=30):
                         await update.message.reply_text("⏳ انتظر 30 دقيقة بين التاكات.")
                         return
-                    # تسجيل التاك
                     w.setdefault("taсks", {}).setdefault(clan_to, {}).setdefault(to_player, []).append({"from": from_player, "time": now})
                     w.setdefault("last_tack_time", {})[pair_key] = now
                     save_data()
@@ -420,29 +408,21 @@ async def handle_war(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if w["c1"]["n"].upper() in msg_up: target_k = "c1"
             elif w["c2"]["n"].upper() in msg_up: target_k = "c2"
             if target_k:
-                # التحقق من الصلاحية
                 other_k = "c2" if target_k == "c1" else "c1"
                 if not is_referee and w[other_k]["leader"] == u_tag:
                     await update.message.reply_text("❌ لا يمكنك إرسال قائمة الخصم.")
                     return
                 w[target_k]["leader"] = u_tag
-                # استخراج اللاعبين من الرسالة المُردود عليها
                 players = [p.strip() for p in update.message.reply_to_message.text.split('\n') if p.startswith('@')]
                 w[target_k]["p"] = players
                 save_data()
                 await update.message.reply_text(f"✅ تم اعتماد قائمة {w[target_k]['n']}.")
-
-                # إذا اكتملت القائمتان، ننشئ الجدول
                 if w["c1"]["p"] and w["c2"]["p"]:
-                    p1 = list(w["c1"]["p"])
-                    p2 = list(w["c2"]["p"])
-                    random.shuffle(p1)
-                    random.shuffle(p2)
+                    p1 = list(w["c1"]["p"]); p2 = list(w["c2"]["p"])
+                    random.shuffle(p1); random.shuffle(p2)
                     w["matches"] = [{"p1": u1, "p2": u2, "s1": 0, "s2": 0} for u1, u2 in zip(p1, p2)]
                     save_data()
-                    rows = []
-                    for i, m in enumerate(w["matches"]):
-                        rows.append(f"{i+1} | {m['p1']} {to_emoji(0)}|🆚|{to_emoji(0)} {m['p2']} |")
+                    rows = [f"{i+1} | {m['p1']} {to_emoji(0)}|🆚|{to_emoji(0)} {m['p2']} |" for i, m in enumerate(w["matches"])]
                     table = f"A- [ {w['c1']['n']} ] | 𝗩𝗦 | B- [ {w['c2']['n']} ]\n───\n" + "\n".join(rows) + f"\n───\n⌛ يومين\n🔗 {AU_LINK}"
                     sent = await update.message.reply_text(table, disable_web_page_preview=True)
                     w["mid"] = sent.message_id
@@ -477,7 +457,6 @@ async def handle_war(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if not target:
                 await update.message.reply_text("❌ اسم الكلان غير صحيح.")
                 return
-            # التحقق من الصلاحية
             asst_tag = clans_mgmt.get(cid, {}).get(w[target]["n"].upper(), {}).get("asst")
             if not (is_referee or u_tag == w[target]["leader"] or u_tag == asst_tag):
                 await update.message.reply_text("❌ غير مصرح بالتبديل.")
@@ -485,14 +464,11 @@ async def handle_war(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if w["replacements"][target] >= 3:
                 await update.message.reply_text("❌ استنفدت التبديلات.")
                 return
-            # البحث عن المباراة
             found = False
             for match in w["matches"]:
                 if match["p1"] == old or match["p2"] == old:
-                    if match["p1"] == old:
-                        match["p1"] = new
-                    else:
-                        match["p2"] = new
+                    if match["p1"] == old: match["p1"] = new
+                    else: match["p2"] = new
                     found = True
                     break
             if not found:
@@ -502,7 +478,6 @@ async def handle_war(update: Update, context: ContextTypes.DEFAULT_TYPE):
             w["replacement_log"][target].append({"old": old, "new": new, "time": datetime.now()})
             save_data()
             await update.message.reply_text(f"✅ تم التبديل. تبقت {3 - w['replacements'][target]} تبديلات.")
-            # تحديث الجدول
             if w["mid"]:
                 rows = [f"{i+1} | {m['p1']} {to_emoji(m['s1'])}|🆚|{to_emoji(m['s2'])} {m['p2']} |" for i, m in enumerate(w["matches"])]
                 updated = f"A- [ {w['c1']['n']} ] | 𝗩𝗦 | B- [ {w['c2']['n']} ]\n───\n" + "\n".join(rows) + f"\n───\n⌛ يومين\n🔗 {AU_LINK}"
@@ -521,7 +496,6 @@ async def handle_war(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if not target:
                 await update.message.reply_text("❌ اسم الكلان خطأ.")
                 return
-            # التحقق من الصلاحية
             asst_tag = clans_mgmt.get(cid, {}).get(w[target]["n"].upper(), {}).get("asst")
             if not (is_referee or u_tag == w[target]["leader"] or u_tag == asst_tag):
                 await update.message.reply_text("❌ غير مصرح.")
@@ -554,24 +528,17 @@ async def handle_war(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 p_win = u1 if sc1 > sc2 else u2
                 w[win_k]["s"] += 1
                 w[win_k]["stats"].append({"name": p_win, "goals": max(sc1, sc2), "rec": min(sc1, sc2), "is_free": False})
-                # تحديث الجدول
                 for m in w["matches"]:
                     if (u1 == m["p1"].upper() or u1 == m["p2"].upper()) and (u2 == m["p1"].upper() or u2 == m["p2"].upper()):
-                        if u1 == m["p1"].upper():
-                            m["s1"], m["s2"] = sc1, sc2
-                        else:
-                            m["s1"], m["s2"] = sc2, sc1
-                        # طرد اللاعبين بعد المباراة (اختياري - نطردهم ثم نعيد السماح بعد قليل؟ الأفضل طرد مؤقت)
-                        # سيتم تنفيذه لاحقاً في وظيفة منفصلة
+                        if u1 == m["p1"].upper(): m["s1"], m["s2"] = sc1, sc2
+                        else: m["s1"], m["s2"] = sc2, sc1
                         break
                 save_data()
                 await update.message.reply_text(f"✅ نقطة لـ {w[win_k]['n']}.")
-                # تحديث عنوان المجموعة
                 try:
                     await context.bot.set_chat_title(cid, f"⚔️ {w['c1']['n']} {w['c1']['s']} - {w['c2']['s']} {w['c2']['n']} ⚔️")
                 except:
                     pass
-                # تحديث الجدول
                 if w["mid"]:
                     rows = [f"{i+1} | {m['p1']} {to_emoji(m['s1'])}|🆚|{to_emoji(m['s2'])} {m['p2']} |" for i, m in enumerate(w["matches"])]
                     updated = f"A- [ {w['c1']['n']} ] | 𝗩𝗦 | B- [ {w['c2']['n']} ]\n───\n" + "\n".join(rows) + f"\n───\n⌛ يومين\n🔗 {AU_LINK}"
@@ -579,11 +546,9 @@ async def handle_war(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         await context.bot.edit_message_text(updated, cid, w["mid"], disable_web_page_preview=True)
                     except:
                         pass
-                # التحقق من الفوز
                 if w[win_k]["s"] >= 4:
                     w["active"] = False
                     save_data()
-                    # حساب النجم والحاسم
                     real = [h for h in w[win_k]["stats"] if not h.get("is_free")]
                     if real:
                         hasm = real[-1]["name"]
@@ -600,7 +565,6 @@ async def handle_war(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         details += f"{i+1}. {m['p1']} {to_emoji(m['s1'])} - {to_emoji(m['s2'])} {m['p2']}\n"
                     await update.message.reply_text(details)
             else:
-                # نقطة فري (للإدارة فقط)
                 if not is_referee:
                     await update.message.reply_text("❌ النقطة الفري للإدارة فقط.")
                     return
@@ -615,7 +579,6 @@ async def handle_war(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # ----- استقبال أمر بدء المواجهة من بوت النشر -----
     if "بدء مواجهة:" in msg:
-        # الصيغة: بدء مواجهة: الرابط: xxx النوع: xxx الكلانات: CLAN A VS CLAN B
         link_match = re.search(r'الرابط:\s*(.+)', msg)
         type_match = re.search(r'النوع:\s*(.+)', msg)
         clans_match = re.search(r'الكلانات:\s*(.+)', msg)
@@ -630,7 +593,6 @@ async def handle_war(update: Update, context: ContextTypes.DEFAULT_TYPE):
             c1_n = parts[0].replace("CLAN ", "").strip()
             c2_n = parts[1].replace("CLAN ", "").strip()
 
-            # بدء الحرب
             wars[cid] = {
                 "c1": {"n": c1_n, "s": 0, "p": [], "stats": [], "leader": None},
                 "c2": {"n": c2_n, "s": 0, "p": [], "stats": [], "leader": None},
@@ -674,8 +636,7 @@ async def handle_objection_text(update: Update, context: ContextTypes.DEFAULT_TY
         cid = data["cid"]
         user = data["user"]
         obj_text = update.message.text
-        # إرسال إلى مجموعة الحكام (يجب تعيين معرف المجموعة)
-        REF_GROUP = -1001234567890  # غيّره لمعرف مجموعة الحكام
+        REF_GROUP = -1001234567890  # غيّره لمعرف مجموعة الحكام الحقيقية
         try:
             await context.bot.send_message(
                 REF_GROUP,
