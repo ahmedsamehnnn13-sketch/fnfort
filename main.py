@@ -5,7 +5,7 @@ import os
 import threading
 from datetime import datetime, timedelta
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import Application, MessageHandler, filters, ContextTypes, CallbackQueryHandler, JobQueue
+from telegram.ext import Application, MessageHandler, filters, ContextTypes, CallbackQueryHandler
 from flask import Flask
 
 # -------------------- إعدادات Flask --------------------
@@ -20,8 +20,8 @@ def run_flask():
 
 # -------------------- الثوابت --------------------
 TOKEN = "8546666050:AAFt7buGH1xrVTTWa-lrIhOdesG_sk2n_bM"  # توكن بوت الحكم
-PUBLISHER_BOT_USERNAME = "@OACVBOT"  # يوزر بوت النشر (للتأكد من المرسل عند بدء المواجهة)
-ORGANIZER_CHAT_ID = -1002029492622  # معرف مجموعة المنظمين (سيُرسل إليه تقرير الانتهاء)
+PUBLISHER_BOT_ID = 8251539959  # معرف بوت النشر الرقمي (بدون @)
+ORGANIZER_CHAT_ID = -1002029492622  # معرف مجموعة المنظمين
 AU_LINK = "https://t.me/arab_union3"
 DATA_FILE = "referee_data.json"
 SUPER_ADMINS = ["mwsa_20", "levil_8"]  # السوبر أدمن
@@ -123,15 +123,12 @@ def load_data():
     try:
         with open(DATA_FILE, 'r', encoding='utf-8') as f:
             data = json.load(f)
-            # تحويل المفاتيح إلى int وتحويل السلاسل الزمنية
             if "wars" in data:
                 wars = {}
                 for k, v in data["wars"].items():
                     cid = int(k)
                     if "start_time" in v and isinstance(v["start_time"], str):
                         v["start_time"] = datetime.fromisoformat(v["start_time"])
-                    if "taсks" in v:
-                        pass
                     wars[cid] = v
             if "clans_mgmt" in data:
                 clans_mgmt = {int(k): v for k, v in data["clans_mgmt"].items()}
@@ -154,11 +151,6 @@ def clean_text(text):
     text = text.lower()
     text = text.replace('ة', 'ه').replace('أ', 'ا').replace('إ', 'ا').replace('آ', 'ا')
     return re.sub(r'^(ال)', '', text)
-
-def is_official_time(dt=None):
-    if dt is None:
-        dt = datetime.now()
-    return dt.hour >= 9 or dt.hour < 1
 
 # -------------------- وظائف الخلفية --------------------
 async def check_absence_job(context: ContextTypes.DEFAULT_TYPE):
@@ -228,6 +220,7 @@ async def handle_war(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     original_msg_store[mid] = msg
 
+    # تحديد الرتبة
     try:
         chat_member = await context.bot.get_chat_member(cid, user.id)
         is_creator = (chat_member.status == 'creator')
@@ -315,7 +308,7 @@ async def handle_war(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     pass
             return
 
-    # ----- بدء المواجهة يدوياً -----
+    # ----- بدء المواجهة يدوياً (للاختبار) -----
     if "CLAN" in msg_up and "VS" in msg_up and "+ 1" not in msg_up and cid not in wars:
         parts = msg_up.split(" VS ")
         c1_name = parts[0].replace("CLAN ", "").strip()
@@ -336,7 +329,9 @@ async def handle_war(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "decisive_mode": False,
             "decisive_players": {"c1": None, "c2": None},
             "tac_report_sent": False,
-            "last_activity": {}
+            "last_activity": {},
+            "source_link": None,
+            "war_type": ""
         }
         save_data()
         await update.message.reply_text(f"⚔️ بدأت الحرب: {c1_name} vs {c2_name}")
@@ -546,6 +541,7 @@ async def handle_war(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         await context.bot.edit_message_text(updated, cid, w["mid"], disable_web_page_preview=True)
                     except:
                         pass
+                # التحقق من الفوز (4 نقاط)
                 if w[win_k]["s"] >= 4:
                     w["active"] = False
                     save_data()
@@ -559,11 +555,20 @@ async def handle_war(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     else:
                         result = f"🎊 فوز إداري لـ {w[win_k]['n']}."
                     await update.message.reply_text(result)
-                    # إرسال تفاصيل النتائج
                     details = "📊 النتائج:\n"
                     for i, m in enumerate(w["matches"]):
                         details += f"{i+1}. {m['p1']} {to_emoji(m['s1'])} - {to_emoji(m['s2'])} {m['p2']}\n"
                     await update.message.reply_text(details)
+
+                    # إرسال إشعار إلى بوت النشر
+                    source = w.get("source_link", "غير معروف")
+                    try:
+                        await context.bot.send_message(
+                            chat_id=PUBLISHER_BOT_ID,
+                            text=f"انتهت_مواجهة {cid} {w[win_k]['n']} {w['c1']['s']} {w['c2']['s']} {star} {hasm} {source}"
+                        )
+                    except Exception as e:
+                        print(f"❌ Failed to notify publisher: {e}")
             else:
                 if not is_referee:
                     await update.message.reply_text("❌ النقطة الفري للإدارة فقط.")
@@ -593,6 +598,7 @@ async def handle_war(update: Update, context: ContextTypes.DEFAULT_TYPE):
             c1_n = parts[0].replace("CLAN ", "").strip()
             c2_n = parts[1].replace("CLAN ", "").strip()
 
+            # بدء الحرب
             wars[cid] = {
                 "c1": {"n": c1_n, "s": 0, "p": [], "stats": [], "leader": None},
                 "c2": {"n": c2_n, "s": 0, "p": [], "stats": [], "leader": None},
@@ -614,11 +620,13 @@ async def handle_war(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "war_type": war_type
             }
             save_data()
+            # تغيير اسم الجروب على الفور
             try:
-                await context.bot.set_chat_title(cid, f"⚔️ {c1_n} 0 - 0 {c2_n} {war_type}")
+                new_title = f"⚔️ {c1_n} 0 - 0 {c2_n} {war_type} ⚔️"
+                await context.bot.set_chat_title(cid, new_title)
                 await context.bot.set_chat_description(cid, f"مواجهة: {source_url}")
             except Exception as e:
-                print(f"Error setting title: {e}")
+                print(f"Error setting title/description: {e}")
             await update.message.reply_text("🚀 تم بدء المواجهة بناءً على أمر بوت النشر.")
             context.job_queue.run_once(send_tac_report, timedelta(days=3), data={"cid": cid})
             return
