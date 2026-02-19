@@ -45,6 +45,8 @@ AVAILABLE_GROUPS = [
 ]
 
 post_to_group = {}
+# سجل لمتابعة الكلانات النشطة حالياً لمنع تكرار نفس المواجهة
+active_clans_in_wars = []
 
 # --- دالة فحص المنشور للتأكد من المواجهة والمنظم ---
 def verify_post_content(url, clan_a, clan_b):
@@ -138,14 +140,14 @@ admin_warnings = {}
 original_msg_store = {} 
 
 def save_data():
-    data = {"wars": wars, "clans_mgmt": clans_mgmt, "user_warnings": user_warnings, "admin_warnings": admin_warnings, "post_to_group": post_to_group}
+    data = {"wars": wars, "clans_mgmt": clans_mgmt, "user_warnings": user_warnings, "admin_warnings": admin_warnings, "post_to_group": post_to_group, "active_clans": active_clans_in_wars}
     try:
         with open(DATA_FILE, 'w', encoding='utf-8') as f:
             json.dump(data, f, ensure_ascii=False, indent=4)
     except Exception as e: print(f"❌ Error saving: {e}")
 
 def load_data():
-    global wars, clans_mgmt, user_warnings, admin_warnings, post_to_group
+    global wars, clans_mgmt, user_warnings, admin_warnings, post_to_group, active_clans_in_wars
     if not os.path.exists(DATA_FILE): return
     try:
         with open(DATA_FILE, 'r', encoding='utf-8') as f:
@@ -155,6 +157,7 @@ def load_data():
             user_warnings = {int(k): v for k, v in data.get("user_warnings", {}).items()}
             admin_warnings = {int(k): v for k, v in data.get("admin_warnings", {}).items()}
             post_to_group = data.get("post_to_group", {})
+            active_clans_in_wars = data.get("active_clans", [])
     except Exception as e: print(f"❌ Error loading: {e}")
 
 def to_emoji(num):
@@ -175,6 +178,10 @@ async def cleanup_group(context: ContextTypes.DEFAULT_TYPE):
     try:
         target_war = wars.get(cid)
         if target_war:
+            # إزالة تعريف المواجهة من سجل النشاط للسماح للكلانات باللعب مجدداً
+            pair_id = f"{target_war['c1']['n'].upper()}VS{target_war['c2']['n'].upper()}"
+            if pair_id in active_clans_in_wars: active_clans_in_wars.remove(pair_id)
+
             # 1. إرسال النتيجة للمنظم قبل المسح
             organizer = target_war.get("organizer", "@mwsa_20")
             result_msg = (
@@ -190,8 +197,6 @@ async def cleanup_group(context: ContextTypes.DEFAULT_TYPE):
             except: pass
 
             # 2. تنظيف البيانات
-            p_link = target_war.get("post_link")
-            if p_link in post_to_group: del post_to_group[p_link]
             del wars[cid]
             save_data()
 
@@ -234,6 +239,9 @@ async def handle_war(update: Update, context: ContextTypes.DEFAULT_TYPE):
         clan_part, post_link = lines[0].upper(), lines[1].strip()
         parts = clan_part.split(" VS ")
         c1_name, c2_name = parts[0].replace("CLAN ", "").strip(), parts[1].replace("CLAN ", "").strip()
+        
+        # معرف فريد للمواجهة (الكلانين معاً) لمنع تكرار نفس الخصمين في جروبين
+        pair_id = f"{c1_name.upper()}VS{c2_name.upper()}"
 
         # فحص الرابط ومحتواه
         is_valid, organizer = verify_post_content(post_link, c1_name, c2_name)
@@ -241,14 +249,15 @@ async def handle_war(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text(f"❌ خطأ: المواجهة بين {c1_name} و {c2_name} غير موجودة في هذا الرابط أو الرابط غير صحيح.")
             return
 
-        if post_link in post_to_group:
-            await update.message.reply_text("⚠️ هذه المواجهة قائمة بالفعل.")
+        # السماح بالرابط المتكرر، لكن منع تكرار نفس الخصمين النشطين حالياً
+        if pair_id in active_clans_in_wars:
+            await update.message.reply_text(f"⚠️ المواجهة بين {c1_name} و {c2_name} مفتوحة بالفعل في جروب آخر.")
             return
 
         target_cid = next((g for g in AVAILABLE_GROUPS if g not in wars or not wars[g].get("active")), None)
         
         if target_cid:
-            # تغيير الاسم فوراً
+            # 1. تغيير الاسم فوراً (لضمان أن المستخدم يرى الجروب باسم المواجهة الصحيح)
             try: await context.bot.set_chat_title(target_cid, f"⚔️ {c1_name} 0 - 0 {c2_name} ⚔️")
             except: pass
 
@@ -257,14 +266,16 @@ async def handle_war(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "c2": {"n": c2_name, "s": 0, "p": [], "stats": [], "leader": None},
                 "active": True, "mid": None, "matches": [], "post_link": post_link, "organizer": organizer
             }
-            post_to_group[post_link] = target_cid
+            active_clans_in_wars.append(pair_id)
             save_data()
             
+            # 2. إرسال الرابط للشخص (بعد تغيير اسم الجروب)
+            g_chat = await context.bot.get_chat(target_cid)
+            await update.message.reply_text(f"✅ تم التجهيز لمواجهة {c1_name} VS {c2_name}!\nالرابط: {g_chat.invite_link}")
+            
+            # 3. إرسال رسالة البداية داخل الجروب
             start_msg = await context.bot.send_message(target_cid, f"⚔️ بدأت المواجهة!\n🔥 {c1_name} VS {c2_name}\n🔗 الرابط: {post_link}\n👤 المنظم: {organizer}")
             await context.bot.pin_chat_message(target_cid, start_msg.message_id)
-            
-            g_chat = await context.bot.get_chat(target_cid)
-            await update.message.reply_text(f"✅ تم التجهيز!\nالجروب: {c1_name} VS {c2_name}\nالرابط: {g_chat.invite_link}")
         else:
             await update.message.reply_text("❌ جميع الجروبات مشغولة.")
         return
