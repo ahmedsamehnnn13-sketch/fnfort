@@ -300,11 +300,12 @@ async def handle_war(update: Update, context: ContextTypes.DEFAULT_TYPE):
             save_data()
             
             try:
-                # محاولة تغيير الاسم (إذا فشل يكمل العمل ولا يتوقف)
+                # 1. تغيير الاسم أولاً (إضافة try لتفادي أخطاء الصلاحيات)
                 try:
                     await context.bot.set_chat_title(target_cid, f"⚔️ {c1_name} 0 - 0 {c2_name} ⚔️")
                 except: pass
                 
+                # 2. إرسال الرسالة بعد تغيير الاسم
                 start_msg = await context.bot.send_message(target_cid, f"⚔️ بدأت الحرب الرسمية بين:\n🔥 {c1_name} ضد {c2_name} 🔥\n🔗 رابط المنشور: {post_link}")
                 await context.bot.pin_chat_message(target_cid, start_msg.message_id)
                 
