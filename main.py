@@ -1,4 +1,4 @@
-Import random
+import random
 import re
 import logging
 import os
@@ -903,259 +903,3 @@ if __name__ == "__main__":
     
     print("✅ البوت يعمل الآن (مع خاصية حفظ البيانات، الذكاء الاصطناعي، التاكات، التبديلات، الحاسم، الاعتراضات، وتحديث النتائج)...")
     app.run_polling()
-الكود دا حلو؟ فيه كل دا
-البوت الحكم واليه عمله
-
-عندما يرسله بوت النشر بدا مواجهه يغير اسم الجروب للمواجهه الحاليه وتبدا المواجهه والقوانين كما في هذا الكود بالضبط
-import random
-import re
-import logging
-import os
-import asyncio
-import json
-import threading
-from datetime import datetime, time
-from telegram import Update
-from telegram.ext import Application, MessageHandler, filters, ContextTypes
-from flask import Flask 
-
-
-# --- إعدادات Flask لضمان استمرارية البوت ---
-web_app = Flask(name)
-
-@web_app.route('/')
-def home():
-    return "Bot is Running Live!"
-
-def run_flask():
-    web_app.run(host='0.0.0.0', port=7860)
-
-# --- الإعدادات الثابتة وروابط الاتحاد ---
-TOKEN = "8546666050:AAFt7buGH1xrVTTWa-lrIhOdesG_sk2n_bM"
-CONSTITUTION_LINK = "https://t.me/arab_union3"
-AU_LINK = "https://t.me/arab_union3"
-DATA_FILE = "bot_data.json"  # اسم ملف حفظ البيانات
-
-# --- قاموس القوانين التفصيلية ---
-DETAILED_LAWS = {
-    "قوائم": """⚖️ قوانين القوائم والنجم والحاسم:
-1️⃣ القواعد الأساسية:
-- أي فوز قوائم يمنع كتابة النجم والحاسم.
-- النجم والحاسم يحددان من الحكم (الأهداف، التأثير، السلوك).
-- يمنع جدولة القوائم (إرسالها والقائد غير متصل أو آخر دقيقة بدون قراءة).
-- المنشن للحكم إلزامي عند إرسال القائمة، بدونه تعتبر لاغية (مدة الاعتراض 10 ساعات).
-
-2️⃣ التوقيت:
-- نصف النهائي/النهائي: 18 ساعة (+15د سماح).
-- باقي الأدوار: 14 ساعة (+15د سماح).
-🔗 للمزيد: https://t.me/arab_union3""",
-
-    "سكربت": """⚖️ قوانين السكربت:
-⬆️ طاقات 92 أو أقل = سكربت (حتى لو ميسي).
-⬆️ طاقات أعلى من 92 = ليس سكربت (باستثناء بدون وجه).
-⬆️ الاعتراض في بداية المباراة فقط (الخروج فوراً مع دليل).
-⬆️ في المنتصف: تغيير التشكيلة أو المدرب لا يعتبر سكربت.
-🔗 للمزيد: https://t.me/arab_union3""",
-
-    "وقت": """⚖️ توقيت المواجهات والتمديد:
-⏰ الوقت الرسمي: من 9 صباحاً حتى 1 صباحاً.
-🚫 لا يجبر الخصم على اللعب في وقت غير رسمي (2-8 صباحاً).
-
-🔥 التمديد:
-- يوم واحد (للأدوار العادية)، يومين (نصف/نهائي).
-- يمدد تلقائياً إذا: (حاسمة، اتفاق طرفين، شروط التمديد المنطبقة).
-🔗 للمزيد: https://t.me/arab_union3""",
-
-    "تواجد": """⚖️ قوانين التواجد والغياب:
-🤔 غياب 20 ساعة بدون اتفاق = تبديل مباشر.
-🤔 غياب الطرفين = يتم تبديل الطرف الأقل محاولة للاتفاق.
-🤔 وضع تفاعل (Reaction) على الموعد يعتبر اتفاقاً.
-🤔 الرد خلال 10 دقائق بدون تحديد موعد يعتبر تهرباً (يستوجب التبديل).
-🔗 للمزيد: https://t.me/arab_union3""",
-
-    "تصوير": """⚖️ قوانين التصوير (محدث):
-1- وقت التصوير في البداية فقط.
-2- الآيفون: فيديو (روم المحادثة + الرقم التسلسلي من "حول الهاتف").
-3- يمنع التصوير نهاية المباراة لتجنب الغش.
-4- إرسال التصوير متاح في أي وقت (بداية أو نهاية).
-🔗 للمزيد: https://t.me/arab_union3""",
-
-    "انسحاب": """⚖️ قوانين الانسحاب والخروج:
-🤔 خروج الخاسر بدون دليل + اختفاء ساعتين = هدف مباشر.
-🤔 خروج متعمد (اعتراف) = هدف مباشر.
-🤔 سوء نت: فيديو 30 ثانية يوضح اللاق والإشعارات.
-🤔 الخروج بدون فسخ عقد = حظر بمدة العقد المتبقية.
-🔗 للمزيد: https://t.me/arab_union3""",
-
-    "سب": """⚖️ قوانين السب والإساءة:
-🚫 سب الأهل/الكفر = طرد وحظر (يمكن تقليله بالتنازل).
-🚫 السب في الخاص (أثناء المواجهة) = تبديل + حظر (يتطلب دليل فيديو لليوزر).
-🚫 استفزاز الخصم أو الحكم = عقوبة تقديرية (تبديل/حظر).
-🔗 للمزيد: https://t.me/arab_union3""",
-
-    "فار": """⚖️ قوانين الـ VAR:
-✅ يحق طلب الـ VAR مرة واحدة فقط في (نصف النهائي، ربع النهائي، دور 16).
-✅ الاعتماد الأساسي على حكم المباراة.
-🔗 للمزيد: https://t.me/arab_union3""",
-
-    "انتقالات": """⚖️ قوانين الانتقالات:
-📺 مسموحة فقط يومي (الخميس والجمعة).
-🤔 أي انتقال في يوم آخر يعتبر غير رسمي ويتم تبديل اللاعب.
-🤔 اللاعب الحر (بدون عقد) يمكنه الانتقال في أي وقت.
-🔗 للمزيد: https://t.me/arab_union3""",
-    
-    "عقود": """⚖️ قوانين العقود:
-🤔 أقصى حد للمسؤولين في العقود: 8 قادة.
-🤔 القائد الـ 9 يعتبر وهمي ويطرد.
-🤔 فسخ العقد حصراً من القادة المسجلين.
-🤔 الاعتراض على العقد بعد المباراة: الخيار للخصم (سحب نقطة أو استكمال).
-🔗 للمزيد: https://t.me/arab_union3"""
-}
-
-# كلمات الطرد (السب والكفر)
-BAN_WORDS = ["كسمك", "كسمه", "كسختك",]
-
-# مخازن البيانات الشاملة
-wars = {}
-clans_mgmt = {}
-user_warnings = {}
-admin_warnings = {}
-original_msg_store = {} # لا يتم حفظ هذا في الملف لتقليل الحجم
-
-# --- دوال الحفظ والاسترجاع (Persistence) ---
-def save_data():
-    """حفظ البيانات في ملف JSON لضمان عدم ضياعها عند الريستارت"""
-    data = {
-        "wars": wars,
-        "clans_mgmt": clans_mgmt,
-        "user_warnings": user_warnings,
-        "admin_warnings": admin_warnings
-    }
-    try:
-        with open(DATA_FILE, 'w', encoding='utf-8') as f:
-            json.dump(data, f, ensure_ascii=False, indent=4)
-        print("✅ Data saved successfully.")
-    except Exception as e:
-        print(f"❌ Error saving data: {e}")
-
-def load_data():
-    """استرجاع البيانات عند تشغيل البوت"""
-    global wars, clans_mgmt, user_warnings, admin_warnings
-    if not os.path.exists(DATA_FILE):
-        return
-    
-    try:
-        with open(DATA_FILE, 'r', encoding='utf-8') as f:
-            data = json.load(f)
-            
-            # استرجاع البيانات مع تحويل مفاتيح القواميس إلى أرقام (Integers) لأن JSON يحفظها كنصوص
-            if "wars" in data:
-                wars = {int(k): v for k, v in data["wars"].items()}
-            if "clans_mgmt" in data:
-                clans_mgmt = {int(k): v for k, v in data["clans_mgmt"].items()}
-            if "user_warnings" in data:
-                user_warnings = {int(k): v for k, v in data["user_warnings"].items()}
-            if "admin_warnings" in data:
-                admin_warnings = {int(k): v for k, v in data["admin_warnings"].items()}
-                
-        print("✅ Data loaded successfully.")
-    except Exception as e:
-        print(f"❌ Error loading data: {e}")
-
-# دالة تحويل الأرقام لإيموجي
-def to_emoji(num):
-    n_str = str(num)
-    dic = {'0':'0️⃣','1':'1️⃣','2':'2️⃣','3':'3️⃣','4':'4️⃣','5':'5️⃣','6':'6️⃣','7':'7️⃣','8':'8️⃣','9':'9️⃣'}
-    result = ""
-    for char in n_str:
-        result += dic.get(char, char)
-    return result
-
-# دالة تنظيف النصوص
-def clean_text(text):
-    if not text: return ""
-    text = text.lower()
-    text = text.replace('ة', 'ه').replace('أ', 'ا').replace('إ', 'ا').replace('آ', 'ا')
-    text = re.sub(r'^(ال)', '', text)
-    return text
-
-# --- ميزة مراقبة التعديلات وفضحها ---
-async def handle_edited_msg(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not update.edited_message or not update.edited_message.text:
-        return
-    
-    mid = update.edited_message.message_id
-    if mid in original_msg_store:
-        old_text = original_msg_store[mid]
-        new_text = update.edited_message.text
-        if old_text != new_text:
-            await update.edited_message.reply_text(
-                f"🚨 تنبيه: تم تعديل رسالة في جروب المواجهة!\n\n"
-                f"📜 الرسالة قبل التعديل:\n{old_text}\n\n"
-                f"🔄 الرسالة بعد التعديل:\n{new_text}\n\n"
-                f"⚠️ التلاعب بالرسائل والقوائم ممنوع."
-            )
-
-# --- المعالج الرئيسي للمواجهة ---
-async def handle_war(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not update.message or not update.message.text:
-        return
-
-    cid = update.effective_chat.id
-    msg = update.message.text
-    mid = update.message.message_id
-    msg_up = msg.upper().strip()
-    msg_cleaned = clean_text(msg)
-    user = update.effective_user
-    bot_username = context.bot.username
-    u_tag = f"@{user.username}" if user.username else f"ID:{user.id}"
-
-    # حفظ الرسالة الأصلية فوراً
-    original_msg_store[mid] = msg
-
-    # تحديد رتبة المستخدم
-    super_admins = ["mwsa_20", "levil_8"]
-    try:
-        chat_member = await context.bot.get_chat_member(cid, user.id)
-        is_creator = (chat_member.status == 'creator')
-        is_referee = (user.username in super_admins) or is_creator
-    except:
-        is_creator = False
-        is_referee = (user.username in super_admins)
-
-    # --- الرد على الاعتراضات والقوانين (بشرط المنشن) ---
-    is_bot_mentioned = (f"@{bot_username}" in msg) or (update.message.reply_to_message and update.message.reply_to_message.from_user.id == context.bot.id)
-
-if is_bot_mentioned:
-        for keyword, law_text in DETAILED_LAWS.items():
-            if keyword in msg_cleaned:
-                await update.message.reply_text(law_text, disable_web_page_preview=True)
-                return
-
-    # --- ميزة إلغاء الإنذار (للسوبر أدمن فقط) ---
-    if "الغاء انذار" in msg_cleaned and is_referee:
-        target_t = None
-        if update.message.reply_to_message:
-            t_user = update.message.reply_to_message.from_user
-            target_t = f"@{t_user.username}" if t_user.username else f"ID:{t_user.id}"
-        else:
-            mentions = re.findall(r'@\w+', msg)
-            if mentions: target_t = mentions[0]
-        
-        if target_t:
-            if cid in user_warnings and target_t in user_warnings[cid]:
-                user_warnings[cid][target_t] = 0
-            if cid in admin_warnings and target_t in admin_warnings[cid]:
-                admin_warnings[cid][target_t] = 0
-            save_data() # حفظ التغيير
-            await update.message.reply_text(f"✅ تم صفر (إلغاء) كافة إنذارات {target_t} بواسطة الإدارة.")
-            return
-
-    # --- نظام الطرد الآلي (للكفر والسب) ---
-    for word in BAN_WORDS:
-        if word in msg.lower():
-            if user.username not in super_admins:
-                try:
-                    await context.bot.ban_chat_member(cid, user.id)
-                    await update.message.reply_text(f"🚫 تم طرد {u_tag} فوراً لانتهاك قوانين الاتحاد (سب/كفر).")
-                excep
