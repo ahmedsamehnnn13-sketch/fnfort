@@ -478,8 +478,50 @@ async def handle_war(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 # إرسال الرسالة النهائية
                 await update.message.reply_text(f"📊 **تفاصيل النتائج:**\n\n{match_results_str}")
 
-    # --- استقبال أوامر بوت النشر ---
+        # --- استقبال أوامر بوت النشر (استبدل هذا الجزء في كود الحكم) ---
     if "بدء مواجهة:" in msg:
+        link_match = re.search(r'الرابط: (.+)', msg)
+        clans_match = re.search(r'الكلانات: (.+)', msg)
+        
+        if link_match and clans_match:
+            source_url = link_match.group(1)
+            clans_text = clans_match.group(1)
+            
+            # استخراج الأسماء
+            parts = clans_text.upper().split(" VS ")
+            c1_n = parts[0].replace("CLAN ", "").strip()
+            c2_n = parts[1].replace("CLAN ", "").strip()
+
+            # 1. تصفير شامل لبيانات الجروب (لأنه قد يكون مستخدم سابقاً)
+            user_warnings[cid] = {}
+            admin_warnings[cid] = {}
+            clans_mgmt[cid] = {}
+            
+            # 2. بدء الحرب الجديدة في الذاكرة
+            wars[cid] = {
+                "c1": {"n": c1_n, "s": 0, "p": [], "stats": [], "leader": None},
+                "c2": {"n": c2_n, "s": 0, "p": [], "stats": [], "leader": None},
+                "active": True, "mid": None, "matches": [], "source_link": source_url
+            }
+            save_data()
+
+            # 3. تحديث مظهر الجروب
+            try:
+                # تغيير الاسم للنتيجة الصفرية
+                await context.bot.set_chat_title(cid, f"⚔️ {c1_n} 0 - 0 {c2_n} ⚔️")
+                # وضع رابط المنشور في الوصف للتوثيق
+                await context.bot.set_chat_description(cid, f"مواجهة رسمية بين {c1_n} و {c2_n}\nالمنظم: موجود\nرابط المنشور: {source_url}")
+            except Exception as e:
+                print(f"Error updating chat: {e}")
+
+            await update.message.reply_text(
+                f"🚀 **تم تفعيل المواجهة عشوائياً!**\n\n"
+                f"🏟️ الجروب جاهز الآن.\n"
+                f"🛡️ تم تصفير كافة الإنذارات السابقة.\n"
+                f"📋 يرجى من قادة {c1_n} و {c2_n} إرسال القوائم الآن."
+            )
+            return
+
         # استخراج البيانات من النص المرسل
         link_match = re.search(r'الرابط: (.+)', msg)
         type_match = re.search(r'النوع: (.+)', msg)
