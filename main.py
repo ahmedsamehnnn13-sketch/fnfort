@@ -217,7 +217,9 @@ async def cleanup_group(context: ContextTypes.DEFAULT_TYPE):
             del wars[cid]
             save_data()
             
-        await context.bot.set_chat_title(cid, "المواجهة القادمة - متاح")
+        try:
+            await context.bot.set_chat_title(cid, "المواجهة القادمة - متاح")
+        except: pass
     except Exception as e:
         print(f"Cleanup error: {e}")
 
@@ -284,9 +286,7 @@ async def handle_war(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         target_cid = None
         for g_id in AVAILABLE_GROUPS:
-            # الجروب متاح فقط إذا لم يكن فيه حرب نشطة (active) أو مهلة طرد (cleaning)
             if g_id not in wars or wars[g_id].get("active") == False:
-                # التحقق الإضافي لضمان عدم وجود مهلة طرد لم تنتهِ
                 target_cid = g_id
                 break
         
@@ -300,7 +300,11 @@ async def handle_war(update: Update, context: ContextTypes.DEFAULT_TYPE):
             save_data()
             
             try:
-                await context.bot.set_chat_title(target_cid, f"⚔️ {c1_name} 0 - 0 {c2_name} ⚔️")
+                # محاولة تغيير الاسم (إذا فشل يكمل العمل ولا يتوقف)
+                try:
+                    await context.bot.set_chat_title(target_cid, f"⚔️ {c1_name} 0 - 0 {c2_name} ⚔️")
+                except: pass
+                
                 start_msg = await context.bot.send_message(target_cid, f"⚔️ بدأت الحرب الرسمية بين:\n🔥 {c1_name} ضد {c2_name} 🔥\n🔗 رابط المنشور: {post_link}")
                 await context.bot.pin_chat_message(target_cid, start_msg.message_id)
                 
@@ -441,8 +445,13 @@ async def handle_war(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     w[win_k]["stats"].append({"name": "Free Point", "goals": 0, "rec": 0, "is_free": True})
                     save_data()
                 
-                try: await context.bot.set_chat_title(cid, f"⚔️ {w['c1']['n']} {w['c1']['s']} - {w['c2']['s']} {w['c2']['n']} ⚔️")
+                try:
+                    # محاولة تحديث اسم الجروب مع تفادي الخطأ
+                    try:
+                        await context.bot.set_chat_title(cid, f"⚔️ {w['c1']['n']} {w['c1']['s']} - {w['c2']['s']} {w['c2']['n']} ⚔️")
+                    except: pass
                 except: pass
+                
                 if w["mid"]:
                     rows = [f"{i+1} | {m['p1']} {to_emoji(m['s1'])}|🆚|{to_emoji(m['s2'])} {m['p2']} |" for i, m in enumerate(w["matches"])]
                     updated_table = f"A- [ {w['c1']['n']} ] | 𝗩𝗦 | B- [ {w['c2']['n']} ]\n───\n" + "\n".join(rows) + f"\n───\n⌛ يومين\n🔗 {AU_LINK}"
