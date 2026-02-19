@@ -467,6 +467,17 @@ async def handle_war(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 
                 # إرسال رسالة النتيجة أولاً
                 await update.message.reply_text(result_msg)
+
+                # --- إرسال تفاصيل النتائج النهائية (تم تصحيح الإزاحة هنا) ---
+                match_results_str = ""
+                for i, m in enumerate(w["matches"]):
+                    line = f"{i+1} | {m['p1']} {to_emoji(m['s1'])}|🆚|{to_emoji(m['s2'])} {m['p2']} |"
+                    match_results_str += line + "\n"
+                    match_results_str += "─── ─── ─── ─── ───\n"
+                
+                # إرسال الرسالة النهائية
+                await update.message.reply_text(f"📊 **تفاصيل النتائج:**\n\n{match_results_str}")
+
     # --- استقبال أوامر بوت النشر ---
     if "بدء مواجهة:" in msg:
         # استخراج البيانات من النص المرسل
@@ -501,49 +512,6 @@ async def handle_war(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
             await update.message.reply_text(f"🚀 تم استلام البيانات من بوت النشر.\nتم تحديث اسم الجروب والوصف وبدء الحرب!")
             return
-
-
-                # --- إرسال تفاصيل النتائج الواقعية (ليست 0/0) ---
-                match_results_str = "            # --- إنهاء الحرب وإرسال النتائج النهائية ---
-            if w[win_k]["s"] >= 4:
-                w["active"] = False
-                save_data() 
-                history = w[win_k]["stats"]
-                real_players = [h for h in history if not h["is_free"]]
-                
-                if real_players:
-                    hasm = real_players[-1]["name"]
-                    star_player_data = max(real_players, key=lambda x: (x["goals"] - x["rec"]))
-                    star = star_player_data["name"]
-                    star_goals = star_player_data["goals"]
-                    star_rec = star_player_data["rec"]
-                    
-                    result_msg = (
-                        f"🎊 انتهت الحرب بفوز كلان: {w[win_k]['n']} 🎊\n\n"
-                        f"🎯 الحاسم: {hasm} (آخر من سجل)\n"
-                        f"⭐ النجم: {star} (سجل {star_goals} واستقبل {star_rec})"
-                    )
-                else:
-                    result_msg = f"🎊 انتهت الحرب بفوز إداري لكلان: {w[win_k]['n']} 🎊"
-                
-                await update.message.reply_text(result_msg)
-
-                # --- التصحيح هنا: يجب أن تكون هذه الأسطر بنفس مستوى الإزاحة داخل الـ if ---
-                match_results_str = ""
-                for i, m in enumerate(w["matches"]):
-                    line = f"{i+1} | {m['p1']} {to_emoji(m['s1'])}|🆚|{to_emoji(m['s2'])} {m['p2']} |"
-                    match_results_str += line + "\n"
-                    match_results_str += "─── ─── ─── ─── ───\n"
-                
-                await update.message.reply_text(f"📊 **تفاصيل النتائج:**\n\n{match_results_str}")
-"
-                for i, m in enumerate(w["matches"]):
-                    line = f"{i+1} | {m['p1']} {to_emoji(m['s1'])}|🆚|{to_emoji(m['s2'])} {m['p2']} |"
-                    match_results_str += line + "\n"
-                    match_results_str += "─── ─── ─── ─── ───\n"
-                
-                # إرسال الرسالة النهائية
-                await update.message.reply_text(f"📊 **تفاصيل النتائج:**\n\n{match_results_str}")
 
 # --- تشغيل البوت ---
 if __name__ == "__main__":
