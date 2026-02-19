@@ -201,7 +201,9 @@ async def cleanup_group(context: ContextTypes.DEFAULT_TYPE):
             save_data()
 
         await context.bot.send_message(cid, "🚨 **انتهت مهلة الـ 10 ساعات.**\nيتم الآن تنظيف الجروب وإتاحته لمواجهة جديدة.")
-        try: await context.bot.set_chat_title(cid, "المواجهة القادمة - متاح")
+        try: 
+            await context.bot.set_chat_title(cid, "المواجهة القادمة - متاح")
+            await context.bot.set_chat_description(cid, "هذا الجروب متاح لاستضافة مواجهة جديدة.")
         except: pass
     except Exception as e: print(f"Cleanup error: {e}")
 
@@ -240,7 +242,6 @@ async def handle_war(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parts = clan_part.split(" VS ")
         c1_name, c2_name = parts[0].replace("CLAN ", "").strip(), parts[1].replace("CLAN ", "").strip()
         
-        # معرف فريد للمواجهة (الكلانين معاً) لمنع تكرار نفس الخصمين في جروبين
         pair_id = f"{c1_name.upper()}VS{c2_name.upper()}"
 
         # فحص الرابط ومحتواه
@@ -249,7 +250,7 @@ async def handle_war(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text(f"❌ خطأ: المواجهة بين {c1_name} و {c2_name} غير موجودة في هذا الرابط أو الرابط غير صحيح.")
             return
 
-        # السماح بالرابط المتكرر، لكن منع تكرار نفس الخصمين النشطين حالياً
+        # منع تكرار نفس الخصمين حالياً
         if pair_id in active_clans_in_wars:
             await update.message.reply_text(f"⚠️ المواجهة بين {c1_name} و {c2_name} مفتوحة بالفعل في جروب آخر.")
             return
@@ -257,8 +258,10 @@ async def handle_war(update: Update, context: ContextTypes.DEFAULT_TYPE):
         target_cid = next((g for g in AVAILABLE_GROUPS if g not in wars or not wars[g].get("active")), None)
         
         if target_cid:
-            # 1. تغيير الاسم فوراً (لضمان أن المستخدم يرى الجروب باسم المواجهة الصحيح)
-            try: await context.bot.set_chat_title(target_cid, f"⚔️ {c1_name} 0 - 0 {c2_name} ⚔️")
+            # 1. تغيير الاسم والوصف فوراً (ليظهر رابط المنشور في الوصف)
+            try: 
+                await context.bot.set_chat_title(target_cid, f"⚔️ {c1_name} 0 - 0 {c2_name} ⚔️")
+                await context.bot.set_chat_description(target_cid, f"رابط المنشور الرسمي: {post_link}")
             except: pass
 
             wars[target_cid] = {
@@ -269,12 +272,12 @@ async def handle_war(update: Update, context: ContextTypes.DEFAULT_TYPE):
             active_clans_in_wars.append(pair_id)
             save_data()
             
-            # 2. إرسال الرابط للشخص (بعد تغيير اسم الجروب)
+            # 2. إرسال الرابط للشخص
             g_chat = await context.bot.get_chat(target_cid)
             await update.message.reply_text(f"✅ تم التجهيز لمواجهة {c1_name} VS {c2_name}!\nالرابط: {g_chat.invite_link}")
             
-            # 3. إرسال رسالة البداية داخل الجروب
-            start_msg = await context.bot.send_message(target_cid, f"⚔️ بدأت المواجهة!\n🔥 {c1_name} VS {c2_name}\n🔗 الرابط: {post_link}\n👤 المنظم: {organizer}")
+            # 3. إرسال رسالة البداية داخل الجروب وتثبيتها
+            start_msg = await context.bot.send_message(target_cid, f"⚔️ بدأت المواجهة الرسمية!\n🔥 {c1_name} VS {c2_name}\n🔗 الرابط: {post_link}\n👤 المنظم: {organizer}")
             await context.bot.pin_chat_message(target_cid, start_msg.message_id)
         else:
             await update.message.reply_text("❌ جميع الجروبات مشغولة.")
