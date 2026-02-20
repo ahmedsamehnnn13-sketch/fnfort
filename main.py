@@ -25,7 +25,10 @@ TOKEN = "8546666050:AAFt7buGH1xrVTTWa-lrIhOdesG_sk2n_bM"
 CONSTITUTION_LINK = "https://t.me/arab_union3"
 AU_LINK = "https://t.me/arab_union3"
 DATA_FILE = "bot_data.json"  # اسم ملف حفظ البيانات
-JUDGES_GROUP_ID = -1003481668972 # ⚠️ ضع هنا آيدي كروب الحكام للاعتراضات
+JUDGES_GROUP_ID = -1000000000000 # ⚠️ ضع هنا آيدي كروب الحكام للاعتراضات
+
+# --- قائمة المستخدمين المحظورين (الإضافة الجديدة) ---
+RESTRICTED_USERS = ["z6_i3", "soiisp"]
 
 # --- قاموس القوانين التفصيلية ---
 DETAILED_LAWS = {
@@ -257,12 +260,44 @@ async def handle_war(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     cid = update.effective_chat.id
     msg = update.message.text
-    mid = update.message.message_id
+    mid = update.message.id
     msg_up = msg.upper().strip()
     msg_cleaned = clean_text(msg)
     user = update.effective_user
     bot_username = context.bot.username
     u_tag = f"@{user.username}" if user.username else f"ID:{user.id}"
+
+    # --- (بداية الإضافة: نظام حظر @z6_i3 و @soiisp) ---
+    # 1. منعهم من استخدام أي أمر في البوت
+    if user.username and user.username.lower() in RESTRICTED_USERS:
+        return 
+
+    # 2. التحقق مما إذا كان أحدهم هو منشئ (مالك) الجروب
+    try:
+        admins = await context.bot.get_chat_administrators(cid)
+        for admin in admins:
+            if admin.status == 'creator' and admin.user.username and admin.user.username.lower() in RESTRICTED_USERS:
+                await update.message.reply_text("🚫 تم اكتشاف أن مالك المجموعة محظور من استخدام خدماتنا. سيغادر البوت فوراً.")
+                await context.bot.leave_chat(cid)
+                return
+    except:
+        pass
+
+    # 3. إخراجهم من أي مواجهة نشطة فوراً إذا كانوا لاعبين أو قادة
+    w = wars.get(cid)
+    if w and w.get("active"):
+        target_username_lower = user.username.lower() if user.username else ""
+        if target_username_lower in RESTRICTED_USERS:
+            # مسحهم من القوائم
+            for k in ["c1", "c2"]:
+                if w[k]["leader"] and w[k]["leader"].replace("@","").lower() == target_username_lower:
+                    w[k]["leader"] = None
+                w[k]["p"] = [p for p in w[k]["p"] if p.replace("@","").lower() != target_username_lower]
+            # مسحهم من جدول المباريات
+            w["matches"] = [m for m in w["matches"] if m["p1"].replace("@","").lower() != target_username_lower and m["p2"].replace("@","").lower() != target_username_lower]
+            save_data()
+            await update.message.reply_text(f"⚠️ تم طرد المستخدم محظور السياسات @{target_username_lower} من القوائم والمواجهة.")
+    # --- (نهاية الإضافة) ---
 
     # إذا كنا في جروب الحكام، نستخدم معالج الردود الخاص بهم
     if cid == JUDGES_GROUP_ID:
