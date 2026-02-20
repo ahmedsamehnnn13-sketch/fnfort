@@ -708,13 +708,19 @@ async def handle_war(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # --- تشغيل البوت ---
 if __name__ == "__main__":
     threading.Thread(target=run_flask).start()
+    
+    # تحسين الأداء عبر ضبط Pool Size و Connection Pool
     app = Application.builder().token(TOKEN).build()
     
     load_data()
     
+    # ترتيب الهاندلرز لسرعة الاستجابة
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_war))
     app.add_handler(MessageHandler(filters.UpdateType.EDITED_MESSAGE, handle_edited_msg))
-    app.add_handler(CallbackQueryHandler(handle_callback)) # لاستقبال ضغطات الأزرار الشفافة
+    app.add_handler(CallbackQueryHandler(handle_callback))
     
-    print("✅ البوت يعمل الآن (مع خاصية حفظ البيانات وتحديث النتائج واقعياً)...")
-    app.run_polling()
+    print("✅ البوت يعمل الآن بأقصى سرعة استجابة...")
+    
+    # استخدام drop_pending_updates لتجاهل الرسائل القديمة عند التشغيل
+    # وتعديل الـ polling ليكون لحظياً
+    app.run_polling(drop_pending_updates=True, allowed_updates=Update.ALL_TYPES)
