@@ -28,7 +28,7 @@ DATA_FILE = "bot_data.json"  # اسم ملف حفظ البيانات
 JUDGES_GROUP_ID = -1000000000000 # ⚠️ ضع هنا آيدي كروب الحكام للاعتراضات
 
 # --- قائمة المستخدمين المحظورين (الإضافة الجديدة) ---
-RESTRICTED_USERS = ["z6_i3", "soiisp"]
+RESTRICTED_USERS = []
 
 # --- قاموس القوانين التفصيلية ---
 DETAILED_LAWS = {
