@@ -5,8 +5,6 @@ import os
 import asyncio
 import json
 import threading
-import sys          # إضافة
-import time         # إضافة
 from datetime import datetime, time, timedelta
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, MessageHandler, filters, ContextTypes, CallbackQueryHandler
@@ -21,12 +19,6 @@ def home():
 
 def run_flask():
     web_app.run(host='0.0.0.0', port=7860)
-
-# --- دالة إعادة التشغيل الدوري (كل 12 ساعة) ---
-def restart_program():
-    """إعادة تشغيل البوت بعد 12 ساعة لتجنب التوقف على الاستضافات المجانية"""
-    time.sleep(12 * 60 * 60)  # 12 ساعة
-    os.execv(sys.executable, ['python'] + sys.argv)
 
 # --- الإعدادات الثابتة وروابط الاتحاد ---
 TOKEN = "8546666050:AAFt7buGH1xrVTTWa-lrIhOdesG_sk2n_bM"
@@ -329,12 +321,12 @@ async def handle_war(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if cid in tag_timers and u_tag in tag_timers[cid]:
         tag_timers[cid][u_tag]["responded"] = True
 
-    # --- الذكاء الاصطناعي (تحليل الاستفزاز) - تم إلغاؤه بناءً على طلب المستخدم ---
-    # if not is_referee:
-    #     for word in PROVOCATION_WORDS:
-    #         if word in msg_cleaned:
-    #             await update.message.reply_text(f"⚠️ {u_tag}، رصد الذكاء الاصطناعي كلمة استفزازية ({word}). يرجى الالتزام بالروح الرياضية وإلا ستتعرض لعقوبة.")
-    #             break
+    # --- الذكاء الاصطناعي (تحليل الاستفزاز) ---
+    if not is_referee:
+        for word in PROVOCATION_WORDS:
+            if word in msg_cleaned:
+                await update.message.reply_text(f"⚠️ {u_tag}، رصد الذكاء الاصطناعي كلمة استفزازية ({word}). يرجى الالتزام بالروح الرياضية وإلا ستتعرض لعقوبة.")
+                break
 
     # --- نظام التاكات المعقد ---
     if w and w.get("active") and not w.get("hasm_mode") and w.get("matches"):
@@ -716,8 +708,6 @@ async def handle_war(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # --- تشغيل البوت ---
 if __name__ == "__main__":
     threading.Thread(target=run_flask).start()
-    # بدء مؤقت إعادة التشغيل كل 12 ساعة
-    threading.Thread(target=restart_program, daemon=True).start()
     
     # تحسين الأداء عبر ضبط Pool Size و Connection Pool
     app = Application.builder().token(TOKEN).build()
